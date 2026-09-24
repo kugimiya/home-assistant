@@ -82,6 +82,8 @@ def main() -> None:
 
     def handle_stt_message(message: dict) -> None:
         msg_type = message.get("type")
+        if msg_type in {"hello", "ready", "audio"}:
+            return
         if msg_type not in {"partial", "final"}:
             return
         text = normalize_text(str(message.get("text", "")))

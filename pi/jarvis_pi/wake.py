@@ -16,7 +16,13 @@ class WakeStateMachine:
     command_window_sec: float
 
     def __post_init__(self) -> None:
-        self._wake_words = tuple(sorted(normalize_text(word) for word in self.wake_words if word), key=len, reverse=True)
+        self._wake_words = tuple(
+            sorted(
+                (normalize_text(word) for word in self.wake_words if word),
+                key=len,
+                reverse=True,
+            )
+        )
         self._awake = False
         self._awake_since = 0.0
 

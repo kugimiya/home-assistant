@@ -36,6 +36,7 @@ class WindowsClient:
     def connect(self) -> None:
         self._control_socket = socket.create_connection((self._host, self._control_port))
         self._control_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._control_socket.sendall(encode_message({"type": "hello", "role": "pi"}))
         self._pcm_socket = socket.create_connection((self._host, self._pcm_port))
         self._pcm_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
