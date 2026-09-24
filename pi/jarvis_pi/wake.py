@@ -49,6 +49,14 @@ class WakeStateMachine:
             wake_word, remainder = self._find_wake(normalized)
             if not wake_word:
                 return None, False, False
+
+            if not is_final:
+                if remainder:
+                    return None, False, False
+                self._awake = True
+                self._awake_since = time.time()
+                return None, True, False
+
             self._awake = True
             self._awake_since = time.time()
             if remainder:
@@ -60,16 +68,17 @@ class WakeStateMachine:
             self._awake = False
             return None, False, True
 
-        if is_final:
-            self._awake = False
-            return normalized, False, False
+        if not is_final:
+            return None, False, False
 
         wake_word, remainder = self._find_wake(normalized)
-        if wake_word and remainder:
-            self._awake = False
-            return remainder, True, False
+        if wake_word and not remainder:
+            return None, False, False
 
-        return None, False, False
+        self._awake = False
+        if remainder:
+            return remainder, False, False
+        return normalized, False, False
 
     def check_timeout(self) -> bool:
         if self._awake and (time.time() - self._awake_since > self.command_window_sec):

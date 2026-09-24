@@ -48,14 +48,38 @@ class ControlChannel:
             self._buffer.extend(chunk)
 
 
+class _PcmSession:
+    def __init__(self, vosk: VoskEngine) -> None:
+        self._vosk = vosk
+        self._lock = threading.Lock()
+        self._recognizer = vosk.create_recognizer()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._recognizer = self._vosk.create_recognizer()
+
+    def feed(self, chunk: bytes):
+        with self._lock:
+            return self._recognizer.feed(chunk)
+
+
 class AudioService:
     def __init__(self, config: WindowsConfig) -> None:
         self._config = config
         self._control: ControlChannel | None = None
         self._control_lock = threading.Lock()
+        self._pcm_session: _PcmSession | None = None
+        self._pcm_session_lock = threading.Lock()
         LOGGER.info("Loading Vosk model from %s", config.vosk_model_path)
         self._vosk = VoskEngine(str(config.vosk_model_path), config.sample_rate)
         LOGGER.info("Vosk model loaded")
+
+    def _reset_stt(self, reason: str) -> None:
+        with self._pcm_session_lock:
+            session = self._pcm_session
+        if session:
+            session.reset()
+            LOGGER.info("STT recognizer reset (%s)", reason)
 
     def run(self) -> None:
         control_thread = threading.Thread(target=self._serve_control, daemon=True)
@@ -101,6 +125,9 @@ class AudioService:
             if msg_type == "hello":
                 channel.send_json({"type": "ready"})
                 continue
+            if msg_type == "stt_reset":
+                self._reset_stt("pi request")
+                continue
             if msg_type != "speak":
                 continue
 
@@ -126,17 +153,28 @@ class AudioService:
                 conn, addr = server.accept()
                 LOGGER.info("PCM connected from %s", addr[0])
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                recognizer = self._vosk.create_recognizer()
+                conn.settimeout(0.35)
+                session = _PcmSession(self._vosk)
+                with self._pcm_session_lock:
+                    self._pcm_session = session
                 try:
                     while True:
-                        chunk = conn.recv(3200)
+                        try:
+                            chunk = conn.recv(3200)
+                        except socket.timeout:
+                            session.reset()
+                            LOGGER.info("STT recognizer reset (uplink gap)")
+                            continue
                         if not chunk:
                             break
-                        for text, is_final in recognizer.feed(chunk):
+                        for text, is_final in session.feed(chunk):
                             self._emit_stt(text, is_final)
                 except OSError as exc:
                     LOGGER.info("PCM client disconnected: %s", exc)
                 finally:
+                    with self._pcm_session_lock:
+                        if self._pcm_session is session:
+                            self._pcm_session = None
                     conn.close()
         finally:
             server.close()

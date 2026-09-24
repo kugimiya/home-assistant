@@ -51,6 +51,12 @@ class WindowsClient:
             raise RuntimeError("PCM socket is not connected")
         return _PcmWriteSink(self._pcm_socket, self._uplink_enabled)
 
+    def send_stt_reset(self) -> None:
+        if not self._control_socket:
+            return
+        with self._control_lock:
+            self._control_socket.sendall(encode_message({"type": "stt_reset"}))
+
     def request_speak(self, text: str, timeout_sec: float = 120.0) -> tuple[bytes, int]:
         if not self._control_socket:
             raise RuntimeError("Control socket is not connected")
