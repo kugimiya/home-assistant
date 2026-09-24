@@ -1,0 +1,7 @@
+.env
+creds.txt
+**/.venv/
+**/__pycache__/
+*.pyc
+windows/models/
+windows/third_party/
