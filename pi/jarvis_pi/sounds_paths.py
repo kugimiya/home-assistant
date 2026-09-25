@@ -17,3 +17,7 @@ def decline_wav() -> Path:
 
 def timer_wav() -> Path:
     return SOUNDS_DIR / "timer.wav"
+
+
+def networking_wav() -> Path:
+    return SOUNDS_DIR / "networking.wav"

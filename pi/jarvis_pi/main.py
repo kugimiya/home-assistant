@@ -12,7 +12,7 @@ from pathlib import Path
 from jarvis_pi.audio_io import PcmCapture, play_pcm, play_wav
 from jarvis_pi.commands import think
 from jarvis_pi.config import load_config
-from jarvis_pi.sounds_paths import accept_wav, decline_wav
+from jarvis_pi.sounds_paths import accept_wav, decline_wav, networking_wav
 from jarvis_pi.wake import WakeStateMachine, normalize_text
 from jarvis_pi.windows_client import WindowsClient
 
@@ -90,14 +90,13 @@ def main() -> None:
 
     def on_command(command_text: str) -> None:
         LOGGER.info("User request: %s", _preview(command_text))
-        resolve_phrase = think.get_resolve_phrase()
-        LOGGER.info("Agent resolve phrase: %s", resolve_phrase)
 
         def stream_sentence(sentence: str) -> None:
             LOGGER.info("Agent stream sentence: %s", _preview(sentence))
             speak(sentence)
 
-        speak(resolve_phrase)
+        LOGGER.info("DeepSeek request -> networking.wav")
+        play_local_wav(networking_wav())
         result = think.handle(command_text, stream_sentence)
         LOGGER.info("Agent reply: %s", _preview(result.reply))
         if result.end_session:

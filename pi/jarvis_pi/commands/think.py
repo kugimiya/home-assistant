@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import random
 import re
 from datetime import datetime
 from urllib.error import HTTPError, URLError
@@ -37,13 +36,6 @@ _ABBREVIATION_TAILS = (
     "г.",
     "ул.",
     "рис.",
-)
-
-RESOLVE_OPTIONS = (
-    "Ща подумаю",
-    "Угу, запускаю мыслительный процесс, подожди",
-    "Спрашиваю у дипсика",
-    "Понятен запрос, подожди",
 )
 
 _RESPONSES_TOOLS: list[dict[str, object]] = [
@@ -132,10 +124,6 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
         },
     },
 ]
-
-
-def get_resolve_phrase() -> str:
-    return random.choice(RESOLVE_OPTIONS)
 
 
 def _responses_url() -> str:

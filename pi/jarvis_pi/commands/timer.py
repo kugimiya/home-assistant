@@ -45,12 +45,14 @@ def schedule_timer(duration_seconds: int, label: str = "") -> str:
         return f"Ошибка: файл звука таймера не найден: {sound_path}"
 
     aplay_device = os.getenv("APLAY_DEVICE", "default").strip() or "default"
-    at_command = f"aplay -q -D {shlex.quote(aplay_device)} {shlex.quote(str(sound_path))}"
+    aplay_cmd = f"aplay -q -D {shlex.quote(aplay_device)} {shlex.quote(str(sound_path))}"
+    # at on Debian does not accept "now + N seconds"; delay via sleep in the job body.
+    at_job = f"sleep {duration}; {aplay_cmd}"
 
     try:
         completed = subprocess.run(
-            ["at", "now", f"+ {duration} seconds"],
-            input=at_command + "\n",
+            ["at", "now"],
+            input=at_job + "\n",
             capture_output=True,
             text=True,
             timeout=10,
