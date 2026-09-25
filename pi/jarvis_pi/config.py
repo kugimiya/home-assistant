@@ -29,6 +29,7 @@ class PiConfig:
     location_city: str
     location_district: str
     location_tz: str
+    stt_command_commit_sec: float
 
 
 def load_location_city() -> str:
@@ -58,4 +59,5 @@ def load_config() -> PiConfig:
         location_city=load_location_city(),
         location_district=os.getenv("LOCATION_DISTRICT", "Ленинский").strip() or "Ленинский",
         location_tz=os.getenv("LOCATION_TZ", "Europe/Samara").strip() or "Europe/Samara",
+        stt_command_commit_sec=float(os.getenv("STT_COMMAND_COMMIT_SEC", "1.0")),
     )

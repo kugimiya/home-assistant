@@ -40,6 +40,42 @@ def main() -> None:
     capture = PcmCapture(config.arecord_device, config.sample_rate)
     action_queue: queue.Queue[str] = queue.Queue()
     stt_suppress_until = 0.0
+    pending_command: str | None = None
+    pending_command_timer: threading.Timer | None = None
+    pending_command_lock = threading.Lock()
+
+    def cancel_pending_command() -> None:
+        nonlocal pending_command, pending_command_timer
+        with pending_command_lock:
+            pending_command = None
+            if pending_command_timer is not None:
+                pending_command_timer.cancel()
+                pending_command_timer = None
+
+    def schedule_command(text: str) -> None:
+        nonlocal pending_command, pending_command_timer
+
+        def commit() -> None:
+            with pending_command_lock:
+                if pending_command != text:
+                    return
+                pending_command_local = text
+            action_queue.put(pending_command_local)
+            cancel_pending_command()
+
+        with pending_command_lock:
+            pending_command = text
+            if pending_command_timer is not None:
+                pending_command_timer.cancel()
+            delay = config.stt_command_commit_sec
+            pending_command_timer = threading.Timer(delay, commit)
+            pending_command_timer.daemon = True
+            pending_command_timer.start()
+        LOGGER.info(
+            "STT final scheduled (commit in %.1fs unless speech continues): %s",
+            config.stt_command_commit_sec,
+            _preview(text),
+        )
 
     def _playback_guard(*, reset_wake: bool) -> None:
         nonlocal stt_suppress_until
@@ -141,6 +177,9 @@ def main() -> None:
         else:
             LOGGER.debug("STT partial: %s", _preview(text))
 
+        if not is_final:
+            cancel_pending_command()
+
         with state_lock:
             command, woke_now, timed_out = wake_machine.process(text, is_final=is_final)
             if timed_out:
@@ -151,8 +190,8 @@ def main() -> None:
                 LOGGER.info("Wake phrase matched in: %s", _preview(text))
                 action_queue.put("__wake__")
             if command:
-                LOGGER.info("Command queued: %s", _preview(command))
-                action_queue.put(command)
+                LOGGER.info("Command detected: %s", _preview(command))
+                schedule_command(command)
 
     threading.Thread(target=worker_loop, daemon=True).start()
     client.start_control_reader(handle_stt_message)
@@ -172,6 +211,7 @@ def main() -> None:
     except KeyboardInterrupt:
         LOGGER.info("Stopping...")
     finally:
+        cancel_pending_command()
         capture.stop()
         client.close()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import threading
 
@@ -153,7 +154,8 @@ class AudioService:
                 conn, addr = server.accept()
                 LOGGER.info("PCM connected from %s", addr[0])
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                conn.settimeout(0.35)
+                uplink_gap_sec = float(os.getenv("PCM_UPLINK_GAP_RESET_SEC", "1.0"))
+                conn.settimeout(uplink_gap_sec)
                 session = _PcmSession(self._vosk)
                 with self._pcm_session_lock:
                     self._pcm_session = session
@@ -163,7 +165,10 @@ class AudioService:
                             chunk = conn.recv(3200)
                         except socket.timeout:
                             session.reset()
-                            LOGGER.info("STT recognizer reset (uplink gap)")
+                            LOGGER.info(
+                                "STT recognizer reset (uplink gap > %.2fs)",
+                                uplink_gap_sec,
+                            )
                             continue
                         if not chunk:
                             break
