@@ -11,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis_pi.audio_io import PcmCapture, play_pcm
-from jarvis_pi.commands import dispatch_command, list_supported_triggers
 from jarvis_pi.commands import think
 from jarvis_pi.config import load_config
 from jarvis_pi.wake import WakeStateMachine, normalize_text
@@ -65,39 +64,19 @@ def main() -> None:
             stt_suppress_until = time.monotonic() + STT_POST_TTS_GRACE_SEC
 
     def on_command(command_text: str) -> None:
-        dispatch_result = dispatch_command(command_text)
-        if not dispatch_result:
-            LOGGER.info("Command not recognized, fallback to think: %s", _preview(command_text))
-            resolve_phrase = think.get_fallback_resolve_phrase()
-            LOGGER.info("Think resolve phrase: %s", resolve_phrase)
-
-            def fallback_stream_sentence(sentence: str) -> None:
-                LOGGER.info("Think stream sentence: %s", _preview(sentence))
-                speak(sentence)
-
-            speak(resolve_phrase)
-            fallback_result = think.handle(command_text, fallback_stream_sentence)
-            LOGGER.info("Think reply: %s", _preview(fallback_result.reply))
-            if not fallback_result.spoken_during_handle:
-                speak(fallback_result.reply)
-            return
-
-        LOGGER.info(
-            "Command resolved | text: %s | payload: %s | resolve phrase: %s",
-            _preview(command_text),
-            _preview(dispatch_result.payload) if dispatch_result.payload else "<empty>",
-            dispatch_result.resolve_phrase,
-        )
-        speak(dispatch_result.resolve_phrase)
+        LOGGER.info("User request: %s", _preview(command_text))
+        resolve_phrase = think.get_resolve_phrase()
+        LOGGER.info("Agent resolve phrase: %s", resolve_phrase)
 
         def stream_sentence(sentence: str) -> None:
-            LOGGER.info("Command stream sentence: %s", _preview(sentence))
+            LOGGER.info("Agent stream sentence: %s", _preview(sentence))
             speak(sentence)
 
-        execution_result = dispatch_result.handler(dispatch_result.payload, stream_sentence)
-        LOGGER.info("Command reply: %s", _preview(execution_result.reply))
-        if not execution_result.spoken_during_handle:
-            speak(execution_result.reply)
+        speak(resolve_phrase)
+        result = think.handle(command_text, stream_sentence)
+        LOGGER.info("Agent reply: %s", _preview(result.reply))
+        if not result.spoken_during_handle:
+            speak(result.reply)
 
     def worker_loop() -> None:
         while True:
@@ -135,10 +114,6 @@ def main() -> None:
             LOGGER.debug("STT partial: %s", _preview(text))
 
         with state_lock:
-            if wake_machine.check_timeout():
-                LOGGER.info("Command window expired")
-                action_queue.put("__timeout__")
-
             command, woke_now, timed_out = wake_machine.process(text, is_final=is_final)
             if timed_out:
                 LOGGER.info("Command window expired on phrase: %s", _preview(text))
@@ -156,13 +131,16 @@ def main() -> None:
     capture.start(client.pcm_write_sink())
 
     LOGGER.info("Wake words: %s", ", ".join(config.wake_words))
-    LOGGER.info("Supported commands: %s", ", ".join(list_supported_triggers()))
     LOGGER.info("Connected to Windows %s", config.windows_host)
     LOGGER.info("Assistant is listening...")
 
     try:
         while True:
-            time.sleep(1)
+            time.sleep(0.25)
+            with state_lock:
+                if wake_machine.check_timeout():
+                    LOGGER.info("Command window expired (silence)")
+                    action_queue.put("__timeout__")
     except KeyboardInterrupt:
         LOGGER.info("Stopping...")
     finally:

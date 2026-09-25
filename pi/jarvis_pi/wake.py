@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
+
+LOGGER = logging.getLogger("jarvis_pi.wake")
 
 
 def normalize_text(text: str) -> str:
@@ -39,6 +42,16 @@ class WakeStateMachine:
         remainder = normalized[index + len(wake_word) :].strip()
         return wake_word, remainder
 
+    def _is_timed_out(self) -> bool:
+        return time.time() - self._awake_since > self.command_window_sec
+
+    def _partial_extends_waiting(self, normalized: str) -> bool:
+        """True when partial looks like the user is still forming a command."""
+        wake_word, remainder = self._find_wake(normalized)
+        if wake_word and not remainder:
+            return False
+        return bool(normalized)
+
     def process(self, text: str, is_final: bool) -> tuple[str | None, bool, bool]:
         """Return command text, woke_now, timed_out."""
         normalized = normalize_text(text)
@@ -64,12 +77,18 @@ class WakeStateMachine:
                 return remainder, True, False
             return None, True, False
 
-        if time.time() - self._awake_since > self.command_window_sec:
+        if not is_final:
+            if self._partial_extends_waiting(normalized):
+                self._awake_since = time.time()
+                LOGGER.info("Command window extended (partial): %s", normalized)
+            if self._is_timed_out():
+                self._awake = False
+                return None, False, True
+            return None, False, False
+
+        if self._is_timed_out():
             self._awake = False
             return None, False, True
-
-        if not is_final:
-            return None, False, False
 
         wake_word, remainder = self._find_wake(normalized)
         if wake_word and not remainder:
@@ -81,7 +100,7 @@ class WakeStateMachine:
         return normalized, False, False
 
     def check_timeout(self) -> bool:
-        if self._awake and (time.time() - self._awake_since > self.command_window_sec):
+        if self._awake and self._is_timed_out():
             self._awake = False
             return True
         return False

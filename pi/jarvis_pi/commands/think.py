@@ -1,4 +1,4 @@
-"""Think command with free-form payload."""
+"""DeepSeek Responses API agent with function tools."""
 
 from __future__ import annotations
 
@@ -6,18 +6,24 @@ import json
 import os
 import random
 import re
-from collections import deque
+from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
+from jarvis_pi.config import load_config
+
+from . import web_search as web_search_tool
+from . import weather
 from .types import CommandExecutionResult, StreamCallback
 
-TRIGGERS = ("подумай",)
-_DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
-_DEEPSEEK_MODEL = "deepseek-chat"
-_REQUEST_TIMEOUT_SEC = 60
-_MAX_INTERACTIONS = 5
-_CONTEXT_MESSAGES: deque[dict[str, str]] = deque(maxlen=_MAX_INTERACTIONS * 2)
+_DEFAULT_RESPONSES_URL = "https://api.deepseek.com/responses"
+_DEFAULT_MODEL = "deepseek-flash"
+_REQUEST_TIMEOUT_SEC = 120
+_MAX_TURNS = 5
+_MAX_TOOL_ROUNDS = 4
+# Each turn: user message + model/tool output items for the next request.
+_TURNS: list[tuple[dict[str, object], list[dict[str, object]]]] = []
 _ABBREVIATION_TAILS = (
     "т.д.",
     "т.п.",
@@ -31,20 +37,93 @@ _ABBREVIATION_TAILS = (
     "рис.",
 )
 
-resolve_options = (
+RESOLVE_OPTIONS = (
     "Ща подумаю",
     "Угу, запускаю мыслительный процесс, подожди",
     "Спрашиваю у дипсика",
     "Понятен запрос, подожди",
 )
 
+_RESPONSES_TOOLS: list[dict[str, object]] = [
+    {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Текущая погода в городе пользователя.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "web_search",
+        "description": (
+            "Поиск актуальной информации в интернете: новости, курсы, расписания, "
+            "факты, которые могли измениться."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Поисковый запрос на русском или английском.",
+                }
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+]
+
 
 def get_resolve_phrase() -> str:
-    return random.choice(resolve_options)
+    return random.choice(RESOLVE_OPTIONS)
 
 
-def get_fallback_resolve_phrase() -> str:
-    return random.choice(resolve_options)
+def _responses_url() -> str:
+    return os.getenv("DEEPSEEK_RESPONSES_URL", _DEFAULT_RESPONSES_URL).strip() or _DEFAULT_RESPONSES_URL
+
+
+def _model() -> str:
+    return os.getenv("DEEPSEEK_MODEL", _DEFAULT_MODEL).strip() or _DEFAULT_MODEL
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off")
+
+
+def _reasoning_body() -> dict[str, str]:
+    if not _env_flag("DEEPSEEK_REASONING", False):
+        return {"effort": "none"}
+    effort = os.getenv("DEEPSEEK_REASONING_EFFORT", "low").strip().lower() or "low"
+    allowed = {"low", "high", "max", "minimal", "medium", "xhigh"}
+    if effort not in allowed:
+        effort = "low"
+    return {"effort": effort}
+
+
+def _build_instructions() -> str:
+    config = load_config()
+    try:
+        now = datetime.now(ZoneInfo(config.location_tz))
+    except (OSError, ValueError):
+        now = datetime.now()
+    when = now.strftime("%d.%m.%Y %H:%M")
+
+    return (
+        "Ты домашний голосовой помощник в колонке. Старайся отвечать средне "
+        "(не кратко, но и не длинно). Не отвечай с Markdown-разметкой, "
+        "TTS озвучивает всякие звезда-звезда. Разные числа и цифры пиши текстом, "
+        "TTS плохо их склоняет. "
+        f"Сейчас {when}. Город: {config.location_city}. Район: {config.location_district}. "
+        "Для погоды вызывай инструмент get_weather. "
+        "Для свежих фактов из интернета вызывай web_search — не отказывайся от поиска, "
+        "если пользователь просит найти или узнать актуальное."
+    )
 
 
 def _strip_markdown_for_tts(text: str) -> str:
@@ -60,24 +139,123 @@ def _strip_markdown_for_tts(text: str) -> str:
     return cleaned
 
 
-def _extract_text_delta(delta_content: object) -> str:
-    if isinstance(delta_content, str):
-        return delta_content
-    if isinstance(delta_content, list):
-        parts: list[str] = []
-        for item in delta_content:
-            if not isinstance(item, dict):
+def _build_request_input(prompt: str) -> tuple[dict[str, object], list[dict[str, object]]]:
+    user_item: dict[str, object] = {"role": "user", "content": prompt}
+    items: list[dict[str, object]] = []
+    for user_message, output_items in _TURNS:
+        items.append(user_message)
+        items.extend(output_items)
+    items.append(user_item)
+    return user_item, items
+
+
+def _commit_turn(user_item: dict[str, object], output_items: list[dict[str, object]]) -> None:
+    _TURNS.append((user_item, output_items))
+    while len(_TURNS) > _MAX_TURNS:
+        _TURNS.pop(0)
+
+
+def _text_from_output_items(output_items: list[dict[str, object]]) -> str:
+    parts: list[str] = []
+    for item in output_items:
+        if item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
                 continue
-            if item.get("type") == "text":
-                text = str(item.get("text", ""))
+            if part.get("type") == "output_text":
+                text = str(part.get("text", ""))
                 if text:
                     parts.append(text)
-        return "".join(parts)
-    return ""
+    return "".join(parts).strip()
 
 
-def _context_messages() -> list[dict[str, str]]:
-    return [dict(message) for message in _CONTEXT_MESSAGES]
+def _function_calls_from_output(output_items: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [item for item in output_items if item.get("type") == "function_call"]
+
+
+def _execute_function_call(name: str, arguments_json: str) -> str:
+    try:
+        args = json.loads(arguments_json or "{}")
+    except json.JSONDecodeError:
+        args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    if name == "get_weather":
+        return weather.fetch_weather_text()
+    if name == "web_search":
+        query = str(args.get("query", "")).strip()
+        if not query:
+            return "Ошибка: пустой поисковый запрос."
+        return web_search_tool.search(query)
+    return f"Неизвестная функция: {name}"
+
+
+def _iter_response_events(response) -> list[dict[str, object]]:
+    events: list[dict[str, object]] = []
+    for raw_line in response:
+        line = raw_line.decode("utf-8", errors="ignore").strip()
+        if not line:
+            continue
+        if line.startswith("data:"):
+            payload = line[5:].strip()
+            if not payload:
+                continue
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+            continue
+        if "data:" in line and line.startswith("event:"):
+            _, rest = line.split("event:", 1)
+            data_idx = rest.find("data:")
+            if data_idx == -1:
+                continue
+            payload = rest[data_idx + 5 :].strip()
+            if not payload:
+                continue
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
+    return events
+
+
+def _output_text_delta(event: dict[str, object]) -> str:
+    if event.get("type") != "response.output_text.delta":
+        return ""
+    delta = event.get("delta")
+    return delta if isinstance(delta, str) else ""
+
+
+def _final_response_from_events(events: list[dict[str, object]]) -> dict[str, object] | None:
+    for event in reversed(events):
+        event_type = event.get("type")
+        if event_type in ("response.completed", "response.incomplete", "response.failed"):
+            response = event.get("response")
+            if isinstance(response, dict):
+                return response
+    return None
+
+
+def _output_items_from_response(response: dict[str, object] | None) -> list[dict[str, object]]:
+    if not response:
+        return []
+    output_raw = response.get("output")
+    output_items: list[dict[str, object]] = []
+    if isinstance(output_raw, list):
+        for item in output_raw:
+            if isinstance(item, dict):
+                output_items.append(item)
+    return output_items
 
 
 def _is_sentence_boundary(buffer: str, idx: int) -> bool:
@@ -130,32 +308,53 @@ def _emit_sentences(buffer: str, stream_callback: StreamCallback | None) -> tupl
     return buffer, emitted
 
 
-def handle(payload: str, stream_callback: StreamCallback | None = None) -> CommandExecutionResult:
-    prompt = payload.strip()
-    if not prompt:
-        return CommandExecutionResult(reply="Сформулируй, о чем подумать после команды.")
+def _http_error_message(exc: HTTPError) -> str:
+    detail = ""
+    try:
+        body = exc.read().decode("utf-8", errors="ignore")
+        parsed = json.loads(body)
+        if isinstance(parsed, dict):
+            err = parsed.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                detail = str(err["message"])
+            elif parsed.get("message"):
+                detail = str(parsed["message"])
+        if not detail:
+            detail = body[:240]
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    if detail:
+        return f"DeepSeek вернул ошибку {exc.code}: {detail}"
+    return f"DeepSeek вернул ошибку {exc.code}."
 
-    system_prompt = (
-        "Ты домашний голосовой помощник в колонке. Старайся отвечать средне "
-        "(не кратко, но и не через чур длинно). Не отвечай с Markdown-разметкой, "
-        "TTS озвучивает всякие звезда-звезда. Разные числа и цифры пиши текстом, "
-        "TTS плохо их склоняет."
-    )
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-    if not api_key:
-        return CommandExecutionResult(reply="Не настроен DEEPSEEK_API_KEY в .env.")
 
-    body = {
-        "model": _DEEPSEEK_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            *_context_messages(),
-            {"role": "user", "content": prompt},
-        ],
+def _speak_full_text(full_text: str, stream_callback: StreamCallback | None) -> None:
+    if not stream_callback or not full_text.strip():
+        return
+    buffer = full_text
+    buffer, _ = _emit_sentences(buffer, stream_callback)
+    remainder = buffer.strip()
+    if remainder:
+        spoken_remainder = _strip_markdown_for_tts(remainder)
+        if spoken_remainder:
+            stream_callback(spoken_remainder)
+
+
+def _post_responses(
+    api_key: str,
+    request_input: list[dict[str, object]],
+) -> tuple[dict[str, object] | None, str, bool]:
+    body: dict[str, object] = {
+        "model": _model(),
+        "instructions": _build_instructions(),
+        "input": request_input,
         "stream": True,
+        "tool_choice": "auto",
+        "tools": _RESPONSES_TOOLS,
+        "reasoning": _reasoning_body(),
     }
     request = Request(
-        _DEEPSEEK_API_URL,
+        _responses_url(),
         data=json.dumps(body).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
@@ -164,50 +363,87 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
         method="POST",
     )
 
+    with urlopen(request, timeout=_REQUEST_TIMEOUT_SEC) as response:
+        events = _iter_response_events(response)
+        chunks: list[str] = []
+        for event in events:
+            piece = _output_text_delta(event)
+            if not piece:
+                continue
+            chunks.append(piece)
+
+        final_response = _final_response_from_events(events)
+        output_items = _output_items_from_response(final_response)
+        has_function_calls = bool(_function_calls_from_output(output_items))
+
+        full_text = "".join(chunks).strip() or _text_from_output_items(output_items)
+        return final_response, full_text, has_function_calls
+
+
+def handle(payload: str, stream_callback: StreamCallback | None = None) -> CommandExecutionResult:
+    prompt = payload.strip()
+    if not prompt:
+        return CommandExecutionResult(reply="Не расслышала запрос, повтори.")
+
+    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        return CommandExecutionResult(reply="Не настроен DEEPSEEK_API_KEY в .env.")
+
+    user_item, request_input = _build_request_input(prompt)
+    turn_history_items: list[dict[str, object]] = []
+    spoken_during_handle = False
+
     try:
-        with urlopen(request, timeout=_REQUEST_TIMEOUT_SEC) as response:
-            chunks: list[str] = []
-            sentence_buffer = ""
-            for raw_line in response:
-                line = raw_line.decode("utf-8", errors="ignore").strip()
-                if not line or not line.startswith("data:"):
-                    continue
+        for _ in range(_MAX_TOOL_ROUNDS + 1):
+            final_response, full_text, has_function_calls = _post_responses(api_key, request_input)
 
-                data = line[len("data:") :].strip()
-                if data == "[DONE]":
-                    break
+            if final_response and final_response.get("status") == "failed":
+                err = final_response.get("error")
+                message = "неизвестная ошибка"
+                if isinstance(err, dict) and err.get("message"):
+                    message = str(err["message"])
+                return CommandExecutionResult(reply=f"DeepSeek не смог ответить: {message}")
 
-                event = json.loads(data)
-                choices = event.get("choices", [])
-                if not choices:
-                    continue
-                delta = choices[0].get("delta", {})
-                piece = _extract_text_delta(delta.get("content"))
-                if not piece:
-                    continue
-                chunks.append(piece)
-                sentence_buffer += piece
-                sentence_buffer, _ = _emit_sentences(sentence_buffer, stream_callback)
-
-            full_text = "".join(chunks).strip()
-            if not full_text:
+            output_items = _output_items_from_response(final_response)
+            if not output_items and not full_text:
                 return CommandExecutionResult(reply="DeepSeek вернул пустой ответ.")
 
-            remainder = sentence_buffer.strip()
-            if remainder and stream_callback:
-                spoken_remainder = _strip_markdown_for_tts(remainder)
-                if spoken_remainder:
-                    stream_callback(spoken_remainder)
+            if has_function_calls:
+                request_input.extend(output_items)
+                turn_history_items.extend(output_items)
+                for call in _function_calls_from_output(output_items):
+                    call_id = str(call.get("call_id") or call.get("id") or "").strip()
+                    name = str(call.get("name") or "").strip()
+                    arguments = str(call.get("arguments") or "{}")
+                    if not call_id:
+                        continue
+                    result = _execute_function_call(name, arguments)
+                    tool_output: dict[str, object] = {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": result,
+                    }
+                    request_input.append(tool_output)
+                    turn_history_items.append(tool_output)
+                continue
 
             sanitized_full_text = _strip_markdown_for_tts(full_text) or full_text
-            _CONTEXT_MESSAGES.append({"role": "user", "content": prompt})
-            _CONTEXT_MESSAGES.append({"role": "assistant", "content": sanitized_full_text})
+            if not sanitized_full_text:
+                return CommandExecutionResult(reply="DeepSeek вернул пустой ответ.")
+
+            turn_history_items.extend(output_items)
+            _commit_turn(user_item, turn_history_items)
+            if stream_callback is not None:
+                _speak_full_text(full_text, stream_callback)
+                spoken_during_handle = True
             return CommandExecutionResult(
                 reply=sanitized_full_text,
-                spoken_during_handle=stream_callback is not None,
+                spoken_during_handle=spoken_during_handle,
             )
+
+        return CommandExecutionResult(reply="Слишком много шагов с инструментами, попробуй проще.")
     except HTTPError as exc:
-        return CommandExecutionResult(reply=f"DeepSeek вернул ошибку {exc.code}.")
+        return CommandExecutionResult(reply=_http_error_message(exc))
     except TimeoutError:
         return CommandExecutionResult(reply="Не получилось получить ответ от DeepSeek: таймаут")
     except URLError:

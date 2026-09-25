@@ -26,6 +26,19 @@ class PiConfig:
     arecord_device: str
     aplay_device: str
     sample_rate: int
+    location_city: str
+    location_district: str
+    location_tz: str
+
+
+def load_location_city() -> str:
+    city = os.getenv("LOCATION_CITY", "").strip()
+    if city:
+        return city
+    legacy = os.getenv("WTTR_LOCATION", "").strip()
+    if legacy:
+        return legacy
+    return "Ульяновск"
 
 
 def load_config() -> PiConfig:
@@ -42,4 +55,7 @@ def load_config() -> PiConfig:
         arecord_device=os.getenv("ARECORD_DEVICE", "plughw:Device,0"),
         aplay_device=os.getenv("APLAY_DEVICE", "default"),
         sample_rate=int(os.getenv("SAMPLE_RATE", "16000")),
+        location_city=load_location_city(),
+        location_district=os.getenv("LOCATION_DISTRICT", "Ленинский").strip() or "Ленинский",
+        location_tz=os.getenv("LOCATION_TZ", "Europe/Samara").strip() or "Europe/Samara",
     )
