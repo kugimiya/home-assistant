@@ -4,23 +4,22 @@ from __future__ import annotations
 
 import logging
 import queue
-import random
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
-from jarvis_pi.audio_io import PcmCapture, play_pcm
+from jarvis_pi.audio_io import PcmCapture, play_pcm, play_wav
 from jarvis_pi.commands import think
 from jarvis_pi.config import load_config
+from jarvis_pi.sounds_paths import accept_wav, decline_wav
 from jarvis_pi.wake import WakeStateMachine, normalize_text
 from jarvis_pi.windows_client import WindowsClient
 
 LOGGER = logging.getLogger("jarvis_pi")
-WAKE_REPLIES = ("Да-да.", "Слушаю.", "Я тут.")
-TIMEOUT_REPLY = "Дальше чиллить буду, пока."
 STT_LOG_PATH = Path("log.txt")
 STT_POST_TTS_GRACE_SEC = 0.7
+POST_COMMAND_RELISTEN_DELAY_SEC = 1.0
 
 
 def _preview(text: str, limit: int = 160) -> str:
@@ -42,26 +41,52 @@ def main() -> None:
     action_queue: queue.Queue[str] = queue.Queue()
     stt_suppress_until = 0.0
 
-    def speak(text: str, *, reset_wake: bool = True) -> None:
+    def _playback_guard(*, reset_wake: bool) -> None:
         nonlocal stt_suppress_until
+        stt_suppress_until = time.monotonic() + 3600.0
+        client.uplink_enabled.clear()
+        client.send_stt_reset()
+        if reset_wake:
+            with state_lock:
+                wake_machine.reset()
+
+    def _playback_release() -> None:
+        nonlocal stt_suppress_until
+        client.uplink_enabled.set()
+        stt_suppress_until = time.monotonic() + STT_POST_TTS_GRACE_SEC
+
+    def play_local_wav(path: Path, *, reset_wake: bool = True) -> None:
+        if not path.is_file():
+            LOGGER.error("Sound file missing: %s", path)
+            return
+        LOGGER.info("Local WAV -> %s", path.name)
+        _playback_guard(reset_wake=reset_wake)
+        try:
+            play_wav(config.aplay_device, path)
+            LOGGER.info("Local WAV playback done")
+        finally:
+            _playback_release()
+
+    def speak(text: str, *, reset_wake: bool = True) -> None:
         text = text.strip()
         if not text:
             return
         LOGGER.info("TTS -> %s", _preview(text))
-        stt_suppress_until = time.monotonic() + 3600.0
-        client.uplink_enabled.clear()
-        client.send_stt_reset()
+        _playback_guard(reset_wake=reset_wake)
         try:
-            if reset_wake:
-                with state_lock:
-                    wake_machine.reset()
             audio, sample_rate = client.request_speak(text)
             LOGGER.info("TTS received %d bytes @ %d Hz, playing...", len(audio), sample_rate)
             play_pcm(config.aplay_device, audio, sample_rate)
             LOGGER.info("TTS playback done")
         finally:
-            client.uplink_enabled.set()
-            stt_suppress_until = time.monotonic() + STT_POST_TTS_GRACE_SEC
+            _playback_release()
+
+    def relisten_after_command() -> None:
+        time.sleep(POST_COMMAND_RELISTEN_DELAY_SEC)
+        with state_lock:
+            wake_machine.arm_listening()
+        LOGGER.info("Follow-up listening -> accept.wav")
+        play_local_wav(accept_wav(), reset_wake=False)
 
     def on_command(command_text: str) -> None:
         LOGGER.info("User request: %s", _preview(command_text))
@@ -75,19 +100,23 @@ def main() -> None:
         speak(resolve_phrase)
         result = think.handle(command_text, stream_sentence)
         LOGGER.info("Agent reply: %s", _preview(result.reply))
+        if result.end_session:
+            LOGGER.info("Decline tool -> decline.wav")
+            play_local_wav(decline_wav())
+            return
         if not result.spoken_during_handle:
             speak(result.reply)
+        relisten_after_command()
 
     def worker_loop() -> None:
         while True:
             action = action_queue.get()
             if action == "__wake__":
-                wake_reply = random.choice(WAKE_REPLIES)
-                LOGGER.info("Wake phrase detected -> %s", wake_reply)
-                speak(wake_reply, reset_wake=False)
+                LOGGER.info("Wake phrase detected -> accept.wav")
+                play_local_wav(accept_wav(), reset_wake=False)
             elif action == "__timeout__":
-                LOGGER.info("Command window timed out without command")
-                speak(TIMEOUT_REPLY)
+                LOGGER.info("Command window timed out -> decline.wav")
+                play_local_wav(decline_wav())
             else:
                 LOGGER.info("Processing command: %s", _preview(action))
                 on_command(action)

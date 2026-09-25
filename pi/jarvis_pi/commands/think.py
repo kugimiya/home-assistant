@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 from jarvis_pi.config import load_config
 
+from . import python_runner
+from . import timer as timer_tool
 from . import web_search as web_search_tool
 from . import weather
 from .types import CommandExecutionResult, StreamCallback
@@ -21,7 +23,7 @@ _DEFAULT_RESPONSES_URL = "https://api.deepseek.com/responses"
 _DEFAULT_MODEL = "deepseek-flash"
 _REQUEST_TIMEOUT_SEC = 120
 _MAX_TURNS = 5
-_MAX_TOOL_ROUNDS = 4
+_MAX_TOOL_ROUNDS = 6
 # Each turn: user message + model/tool output items for the next request.
 _TURNS: list[tuple[dict[str, object], list[dict[str, object]]]] = []
 _ABBREVIATION_TAILS = (
@@ -74,6 +76,61 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "set_timer",
+        "description": (
+            "Поставить звуковой таймер на заданное число секунд. "
+            "Переводи минуты и часы в секунды сам."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "duration_seconds": {
+                    "type": "integer",
+                    "description": "Через сколько секунд проиграть звук таймера (1–86400).",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Короткое описание таймера для пользователя.",
+                },
+            },
+            "required": ["duration_seconds"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "run_python",
+        "description": (
+            "Выполнить короткий Python для точных вычислений: проценты, деление, "
+            "сколько времени до указанного часа. Код должен print() результат."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python-код; результат только через print().",
+                }
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "decline",
+        "description": (
+            "Завершить диалог и уйти в режим ожидания, когда пользователь прощается "
+            "или просит замолчать: спи, выключись, всё, хватит, отбой."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -120,9 +177,15 @@ def _build_instructions() -> str:
         "TTS озвучивает всякие звезда-звезда. Разные числа и цифры пиши текстом, "
         "TTS плохо их склоняет. "
         f"Сейчас {when}. Город: {config.location_city}. Район: {config.location_district}. "
+        f"Часовой пояс: {config.location_tz} (для run_python: zoneinfo.ZoneInfo('{config.location_tz}')). "
         "Для погоды вызывай инструмент get_weather. "
         "Для свежих фактов из интернета вызывай web_search — не отказывайся от поиска, "
-        "если пользователь просит найти или узнать актуальное."
+        "если пользователь просит найти или узнать актуальное. "
+        "Для таймеров вызывай set_timer (длительность в секундах). "
+        "Для арифметики, процентов и «сколько до …» вызывай run_python — не считай в уме, "
+        "пиши код с print() и озвучь результат своими словами. "
+        "Если пользователь хочет завершить разговор (спи, выключись, всё) — вызывай decline, "
+        "без прощальной речи в ответе."
     )
 
 
@@ -177,7 +240,7 @@ def _function_calls_from_output(output_items: list[dict[str, object]]) -> list[d
     return [item for item in output_items if item.get("type") == "function_call"]
 
 
-def _execute_function_call(name: str, arguments_json: str) -> str:
+def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
     try:
         args = json.loads(arguments_json or "{}")
     except json.JSONDecodeError:
@@ -185,14 +248,23 @@ def _execute_function_call(name: str, arguments_json: str) -> str:
     if not isinstance(args, dict):
         args = {}
 
+    if name == "decline":
+        return "Сессия будет завершена.", True
     if name == "get_weather":
-        return weather.fetch_weather_text()
+        return weather.fetch_weather_text(), False
     if name == "web_search":
         query = str(args.get("query", "")).strip()
         if not query:
-            return "Ошибка: пустой поисковый запрос."
-        return web_search_tool.search(query)
-    return f"Неизвестная функция: {name}"
+            return "Ошибка: пустой поисковый запрос.", False
+        return web_search_tool.search(query), False
+    if name == "set_timer":
+        label = str(args.get("label", ""))
+        duration_raw = args.get("duration_seconds", 0)
+        return timer_tool.schedule_timer(duration_raw, label=label), False
+    if name == "run_python":
+        code = str(args.get("code", ""))
+        return python_runner.run_python(code), False
+    return f"Неизвестная функция: {name}", False
 
 
 def _iter_response_events(response) -> list[dict[str, object]]:
@@ -411,13 +483,16 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
             if has_function_calls:
                 request_input.extend(output_items)
                 turn_history_items.extend(output_items)
+                decline_requested = False
                 for call in _function_calls_from_output(output_items):
                     call_id = str(call.get("call_id") or call.get("id") or "").strip()
                     name = str(call.get("name") or "").strip()
                     arguments = str(call.get("arguments") or "{}")
                     if not call_id:
                         continue
-                    result = _execute_function_call(name, arguments)
+                    result, is_decline = _execute_function_call(name, arguments)
+                    if is_decline:
+                        decline_requested = True
                     tool_output: dict[str, object] = {
                         "type": "function_call_output",
                         "call_id": call_id,
@@ -425,6 +500,8 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
                     }
                     request_input.append(tool_output)
                     turn_history_items.append(tool_output)
+                if decline_requested:
+                    return CommandExecutionResult(reply="", end_session=True)
                 continue
 
             sanitized_full_text = _strip_markdown_for_tts(full_text) or full_text

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from pathlib import Path
 from typing import IO
 
 
@@ -82,5 +83,12 @@ def play_pcm(device: str, pcm_data: bytes, sample_rate: int) -> None:
             "raw",
         ],
         input=pcm_data,
+        check=True,
+    )
+
+
+def play_wav(device: str, path: Path) -> None:
+    subprocess.run(
+        ["aplay", "-q", "-D", device, str(path)],
         check=True,
     )

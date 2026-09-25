@@ -28,3 +28,10 @@ PYTHONPATH=. python -m jarvis_pi
 ```
 
 Wake-фразы по умолчанию: `компьютер`, `джарвис`, `прослушка` (`WAKE_WORDS` в `.env`).
+
+Таймеры через tool `set_timer` используют `at`/`atd` на Pi:
+
+```bash
+sudo apt install at
+sudo systemctl enable --now atd
+```

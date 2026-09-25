@@ -33,6 +33,11 @@ class WakeStateMachine:
         self._awake = False
         self._awake_since = 0.0
 
+    def arm_listening(self) -> None:
+        """Open the command window without a wake phrase (follow-up turn)."""
+        self._awake = True
+        self._awake_since = time.time()
+
     def _find_wake(self, normalized: str) -> tuple[str | None, str]:
         matched = [word for word in self._wake_words if word in normalized]
         if not matched:

@@ -12,3 +12,4 @@ StreamCallback = Callable[[str], None]
 class CommandExecutionResult:
     reply: str
     spoken_during_handle: bool = False
+    end_session: bool = False
