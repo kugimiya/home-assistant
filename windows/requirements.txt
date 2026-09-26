@@ -1,2 +1,2 @@
-vosk
+vosk>=0.3.45
 python-dotenv
