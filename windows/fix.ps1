@@ -12,7 +12,7 @@ function Require-Python {
     }
     $version = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
     if ([version]$version -lt [version]"3.11") {
-        throw "Python $version is too old. Need 3.11+ (winget/install.ps1 not run — install manually)."
+        throw "Python $version is too old. Need 3.11+. Install Python manually or run install.ps1."
     }
     Write-Host "Using Python $version from $($python.Source)"
 }
