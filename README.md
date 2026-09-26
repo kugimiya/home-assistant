@@ -7,11 +7,22 @@
 
 ## Windows
 
+Первичная установка (скачивает модели, при необходимости ставит Python через winget):
+
 ```powershell
 cd windows
 .\install.ps1
 .\.venv\Scripts\python.exe -m jarvis_win
 ```
+
+Починить venv и зависимости без переустановки Python:
+
+```powershell
+cd windows
+.\fix.ps1
+```
+
+Из Git Bash: `./fix.sh`
 
 Откройте в брандмауэре TCP `9700` и `9701` для IP платы.
 
