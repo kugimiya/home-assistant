@@ -1,5 +1,5 @@
 # Install vosk 0.3.50 from GitHub source (not PyPI).
-# Tag v0.3.50 has no published win_amd64 wheel — we build it locally with Docker
+# Tag v0.3.50 has no published win_amd64 wheel - we build it locally with Docker
 # (official alphacep MinGW/Kaldi Dockerfile). First image build can take hours.
 #
 # Override: VOSK_GITHUB_REF, VOSK_FORCE_REBUILD=1
@@ -121,7 +121,7 @@ Install Docker Desktop, start it (Linux containers), then re-run install.ps1 / f
     Copy-Item -Force $buildScriptHost (Join-Path $srcDir "build-vosk-wheel-win.sh")
 
     $imageTag = "jarvis-kaldi-win:latest"
-    # Our Dockerfile fixes Debian 11 apt (archive.debian.org) — upstream travis/Dockerfile.win
+    # Our Dockerfile fixes Debian 11 apt (archive.debian.org) - upstream travis/Dockerfile.win
     # often fails with apt-get exit 100 on current Docker hosts.
     $dockerfile = Join-Path $ProjectRoot "Dockerfile.vosk-win"
     if (-not (Test-Path $dockerfile)) {
@@ -131,7 +131,7 @@ Install Docker Desktop, start it (Linux containers), then re-run install.ps1 / f
     Write-Host ""
     Write-Host "Building Docker image $imageTag (first time builds Kaldi - can take 1-3+ hours)..."
     Write-Host "Using $dockerfile (Debian 11 apt archive fix)"
-    # IMPORTANT: do not let docker stdout enter the function success stream —
+    # IMPORTANT: do not let docker stdout enter the function success stream -
     # otherwise `$x = Build-VoskWheelWithDocker` becomes make/pip log text, not the .whl path.
     & docker build --progress=plain --file $dockerfile --tag $imageTag $ProjectRoot *>&1 |
         ForEach-Object { Write-Host $_ }
@@ -185,7 +185,7 @@ function Install-VoskFromGitHub {
     Write-Host "Target vosk: $ref (GitHub source build, not PyPI)"
 
     if ($forceRebuild) {
-        Write-Host "VOSK_FORCE_REBUILD=1 — rebuilding vosk $ref wheel via Docker..."
+        Write-Host "VOSK_FORCE_REBUILD=1 - rebuilding vosk $ref wheel via Docker..."
         $null = Build-VoskWheelWithDocker -ProjectRoot $ProjectRoot -Ref $ref
     }
     else {
@@ -201,21 +201,23 @@ function Install-VoskFromGitHub {
 
     $wheelPath = Get-CachedVoskWheel -ProjectRoot $ProjectRoot -Ref $ref
     if (-not $wheelPath -or -not (Test-Path -LiteralPath $wheelPath)) {
-        throw "vosk wheel not found after build (expected under third_party\\vosk-api\\wheelhouse)"
+        throw "vosk wheel not found after build (expected under third_party\vosk-api\wheelhouse)"
     }
     if ($wheelPath -notmatch '\.whl$') {
         throw "Refusing to pip-install non-wheel path: $wheelPath"
     }
 
     Write-Host "Installing vosk from $wheelPath"
-    & $PythonExe -m pip install --upgrade --force-reinstall -- "$wheelPath"
+    & $PythonExe -m pip install --upgrade --force-reinstall -- $wheelPath
     if ($LASTEXITCODE -ne 0) {
         throw "pip failed to install vosk from $wheelPath"
     }
 
-    $check = & $PythonExe -c "import vosk; print(getattr(vosk, '__version__', 'unknown'))"
+    # Single-quoted -c so PowerShell 5.1 does not parse Python commas/quotes.
+    $pyCheck = 'import vosk; print(getattr(vosk, "__version__", "unknown"))'
+    $check = & $PythonExe -c $pyCheck
     Write-Host "vosk import OK, version reported: $check"
     if ($check -and ($check -notmatch [regex]::Escape($version)) -and ($check -ne "unknown")) {
-        Write-Host "WARNING: expected version containing '$version', got '$check'"
+        Write-Host "WARNING: expected version containing $version, got $check"
     }
 }
