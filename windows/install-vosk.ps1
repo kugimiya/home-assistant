@@ -131,7 +131,10 @@ Install Docker Desktop, start it (Linux containers), then re-run install.ps1 / f
     Write-Host ""
     Write-Host "Building Docker image $imageTag (first time builds Kaldi - can take 1-3+ hours)..."
     Write-Host "Using $dockerfile (Debian 11 apt archive fix)"
-    & docker build --progress=plain --file $dockerfile --tag $imageTag $ProjectRoot
+    # IMPORTANT: do not let docker stdout enter the function success stream —
+    # otherwise `$x = Build-VoskWheelWithDocker` becomes make/pip log text, not the .whl path.
+    & docker build --progress=plain --file $dockerfile --tag $imageTag $ProjectRoot *>&1 |
+        ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         throw @"
 docker build of Kaldi/MinGW image failed.
@@ -152,17 +155,21 @@ If apt still fails: check Docker network/VPN, then:
     }
 
     Write-Host "Cross-compiling libvosk.dll and packing wheel for $Ref ..."
-    & docker run --rm -v "${mountPath}:/io" $imageTag bash /io/build-vosk-wheel-win.sh
+    & docker run --rm -v "${mountPath}:/io" $imageTag bash /io/build-vosk-wheel-win.sh *>&1 |
+        ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         throw "Docker vosk wheel build failed"
     }
 
-    $wheel = Get-ChildItem -Path $wheelhouse -Filter "vosk-*.whl" | Select-Object -First 1
+    $wheel = Get-ChildItem -Path $wheelhouse -Filter "vosk-*.whl" |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
     if (-not $wheel) {
         throw "No vosk-*.whl produced in $wheelhouse"
     }
     Write-Host "Built local wheel: $($wheel.FullName)"
-    return $wheel.FullName
+    # Return only the path (array unary comma keeps a single string if ever needed).
+    return , [string]$wheel.FullName
 }
 
 function Install-VoskFromGitHub {
@@ -177,21 +184,31 @@ function Install-VoskFromGitHub {
 
     Write-Host "Target vosk: $ref (GitHub source build, not PyPI)"
 
-    $wheelPath = $null
-    if (-not $forceRebuild) {
-        $wheelPath = Get-CachedVoskWheel -ProjectRoot $ProjectRoot -Ref $ref
-        if ($wheelPath) {
-            Write-Host "Using cached local wheel: $wheelPath"
+    if ($forceRebuild) {
+        Write-Host "VOSK_FORCE_REBUILD=1 — rebuilding vosk $ref wheel via Docker..."
+        $null = Build-VoskWheelWithDocker -ProjectRoot $ProjectRoot -Ref $ref
+    }
+    else {
+        $cached = Get-CachedVoskWheel -ProjectRoot $ProjectRoot -Ref $ref
+        if ($cached) {
+            Write-Host "Using cached local wheel: $cached"
+        }
+        else {
+            Write-Host "Building vosk $ref wheel via Docker (no published win_amd64 wheel for this tag)..."
+            $null = Build-VoskWheelWithDocker -ProjectRoot $ProjectRoot -Ref $ref
         }
     }
 
-    if (-not $wheelPath) {
-        Write-Host "Building vosk $ref wheel via Docker (no published win_amd64 wheel for this tag)..."
-        $wheelPath = Build-VoskWheelWithDocker -ProjectRoot $ProjectRoot -Ref $ref
+    $wheelPath = Get-CachedVoskWheel -ProjectRoot $ProjectRoot -Ref $ref
+    if (-not $wheelPath -or -not (Test-Path -LiteralPath $wheelPath)) {
+        throw "vosk wheel not found after build (expected under third_party\\vosk-api\\wheelhouse)"
+    }
+    if ($wheelPath -notmatch '\.whl$') {
+        throw "Refusing to pip-install non-wheel path: $wheelPath"
     }
 
     Write-Host "Installing vosk from $wheelPath"
-    & $PythonExe -m pip install --upgrade --force-reinstall $wheelPath
+    & $PythonExe -m pip install --upgrade --force-reinstall -- "$wheelPath"
     if ($LASTEXITCODE -ne 0) {
         throw "pip failed to install vosk from $wheelPath"
     }

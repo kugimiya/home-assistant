@@ -1,0 +1,153 @@
+```
+  writing top-level names to /tmp/pip-modern-metadata-n672cmes/vosk.egg-info/top_level.txt
+  writing manifest file '/tmp/pip-modern-metadata-n672cmes/vosk.egg-info/SOURCES.txt'
+  reading manifest file '/tmp/pip-modern-metadata-n672cmes/vosk.egg-info/SOURCES.txt'
+  writing manifest file '/tmp/pip-modern-metadata-n672cmes/vosk.egg-info/SOURCES.txt'
+  creating '/tmp/pip-modern-metadata-n672cmes/vosk-0.3.50.dist-info'
+  Running command Building wheel for vosk (pyproject.toml)
+  /tmp/pip-build-env-go95foeg/overlay/lib/python3.9/site-packages/setuptools/_vendor/wheel/bdist_wheel.py:4: FutureWarning: The 'wheel' package is no longer the canonical location of the 'bdist_wheel' command, and will be removed in a future release. Please update to setuptools v70.1 or later which contains an integrated version of this command.
+    warn(
+  /tmp/pip-build-env-go95foeg/overlay/lib/python3.9/site-packages/setuptools/dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+  !!
+
+          ********************************************************************************
+          Please consider removing the following classifiers in favor of a SPDX license expression:
+
+          License :: OSI Approved :: Apache Software License
+
+          See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+          ********************************************************************************
+
+  !!
+    self._finalize_license_expression()
+  Adding library /io/src/libgcc_s_seh-1.dll
+  Adding library /io/src/libstdc++-6.dll
+  Adding library /io/src/libvosk.dll
+  Adding library /io/src/libvosk.lib
+  Adding library /io/src/libwinpthread-1.dll
+  running bdist_wheel
+  running build
+  running build_py
+  file vosk/vosk_cffi.py (for module vosk.vosk_cffi) not found
+  creating build/lib/vosk
+  copying vosk/__init__.py -> build/lib/vosk
+  copying vosk/__init__.py -> build/lib/vosk
+  creating build/lib/vosk/transcriber
+  copying vosk/transcriber/cli.py -> build/lib/vosk/transcriber
+  copying vosk/transcriber/transcriber.py -> build/lib/vosk/transcriber
+  copying vosk/transcriber/__init__.py -> build/lib/vosk/transcriber
+  running egg_info
+  creating vosk.egg-info
+  writing vosk.egg-info/PKG-INFO
+  writing dependency_links to vosk.egg-info/dependency_links.txt
+  writing entry points to vosk.egg-info/entry_points.txt
+  writing requirements to vosk.egg-info/requires.txt
+  writing top-level names to vosk.egg-info/top_level.txt
+  writing manifest file 'vosk.egg-info/SOURCES.txt'
+  reading manifest file 'vosk.egg-info/SOURCES.txt'
+  writing manifest file 'vosk.egg-info/SOURCES.txt'
+  copying vosk/libgcc_s_seh-1.dll -> build/lib/vosk
+  copying vosk/libstdc++-6.dll -> build/lib/vosk
+  copying vosk/libvosk.dll -> build/lib/vosk
+  copying vosk/libwinpthread-1.dll -> build/lib/vosk
+  file vosk/vosk_cffi.py (for module vosk.vosk_cffi) not found
+  generating cffi module 'build/lib/vosk/vosk_cffi.py'
+  installing to build/bdist.linux-x86_64/wheel
+  running install
+  running install_lib
+  creating build/bdist.linux-x86_64/wheel
+  creating build/bdist.linux-x86_64/wheel/vosk
+  copying build/lib/vosk/libgcc_s_seh-1.dll -> build/bdist.linux-x86_64/wheel/./vosk
+  copying build/lib/vosk/libstdc++-6.dll -> build/bdist.linux-x86_64/wheel/./vosk
+  copying build/lib/vosk/libvosk.dll -> build/bdist.linux-x86_64/wheel/./vosk
+  copying build/lib/vosk/libwinpthread-1.dll -> build/bdist.linux-x86_64/wheel/./vosk
+  creating build/bdist.linux-x86_64/wheel/vosk/transcriber
+  copying build/lib/vosk/transcriber/cli.py -> build/bdist.linux-x86_64/wheel/./vosk/transcriber
+  copying build/lib/vosk/transcriber/transcriber.py -> build/bdist.linux-x86_64/wheel/./vosk/transcriber
+  copying build/lib/vosk/transcriber/__init__.py -> build/bdist.linux-x86_64/wheel/./vosk/transcriber
+  copying build/lib/vosk/vosk_cffi.py -> build/bdist.linux-x86_64/wheel/./vosk
+  copying build/lib/vosk/__init__.py -> build/bdist.linux-x86_64/wheel/./vosk
+  running install_egg_info
+  Copying vosk.egg-info to build/bdist.linux-x86_64/wheel/./vosk-0.3.50-py3.9.egg-info
+  running install_scripts
+  creating build/bdist.linux-x86_64/wheel/vosk-0.3.50.dist-info/WHEEL
+  creating '/tmp/pip-ephem-wheel-cache-gtqz6a8u/wheels/83/7f/a8/bd9aea75feab8550d5003063ed5e11d39b360285b733be278d/tmpmci_8cr0/.tmp-y8bpq1oj/vosk-0.3.50-py3-none-win_amd64.whl' and adding 'build/bdist.linux-x86_64/wheel' to it
+  adding 'vosk/__init__.py'
+  adding 'vosk/libgcc_s_seh-1.dll'
+  adding 'vosk/libstdc++-6.dll'
+  adding 'vosk/libvosk.dll'
+  adding 'vosk/libwinpthread-1.dll'
+  adding 'vosk/vosk_cffi.py'
+  adding 'vosk/transcriber/__init__.py'
+  adding 'vosk/transcriber/cli.py'
+  adding 'vosk/transcriber/transcriber.py'
+  adding 'vosk-0.3.50.dist-info/METADATA'
+  adding 'vosk-0.3.50.dist-info/WHEEL'
+  adding 'vosk-0.3.50.dist-info/entry_points.txt'
+  adding 'vosk-0.3.50.dist-info/top_level.txt'
+  adding 'vosk-0.3.50.dist-info/RECORD'
+  removing build/bdist.linux-x86_64/wheel
++ ls -la /io/wheelhouse/
+Built local wheel: C:\Users\kugichka\home-assistant\windows\third_party\vosk-api\wheelhouse\vosk-0.3.50-py3-none-win_amd64.whl
+Installing vosk from x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o recognizer.o recognizer.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o language_model.o language_model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o model.o model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o spk_model.o spk_model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o vosk_api.o vosk_api.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o postprocessor.o postprocessor.cc x86_64-w64-mingw32-g++-posix --shared -s -o libvosk.dll recognizer.o language_model.o model.o spk_model.o vosk_api.o postprocessor.o /opt/kaldi/kaldi/src/online2/kaldi-online2.a /opt/kaldi/kaldi/src/decoder/kaldi-decoder.a /opt/kaldi/kaldi/src/ivector/kaldi-ivector.a /opt/kaldi/kaldi/src/gmm/kaldi-gmm.a /opt/kaldi/kaldi/src/tree/kaldi-tree.a /opt/kaldi/kaldi/src/feat/kaldi-feat.a /opt/kaldi/kaldi/src/lat/kaldi-lat.a /opt/kaldi/kaldi/src/lm/kaldi-lm.a /opt/kaldi/kaldi/src/rnnlm/kaldi-rnnlm.a /opt/kaldi/kaldi/src/hmm/kaldi-hmm.a /opt/kaldi/kaldi/src/nnet3/kaldi-nnet3.a /opt/kaldi/kaldi/src/transform/kaldi-transform.a /opt/kaldi/kaldi/src/cudamatrix/kaldi-cudamatrix.a /opt/kaldi/kaldi/src/matrix/kaldi-matrix.a /opt/kaldi/kaldi/src/fstext/kaldi-fstext.a /opt/kaldi/kaldi/src/util/kaldi-util.a /opt/kaldi/kaldi/src/base/kaldi-base.a /opt/kaldi/local/lib/libfst.a /opt/kaldi/local/lib/libfstngram.a /opt/kaldi/local/lib/libopenblas.a /opt/kaldi/local/lib/liblapack.a /opt/kaldi/local/lib/libblas.a /opt/kaldi/local/lib/libf2c.a  -Wl,--out-implib,libvosk.lib Processing /io/python   Installing build dependencies: started   Installing build dependencies: finished with status 'done'   Getting requirements to build wheel: started   Getting requirements to build wheel: finished with status 'done'   Installing backend dependencies: started   Installing backend dependencies: finished with status 'done'   Preparing metadata (pyproject.toml): started   Preparing metadata (pyproject.toml): finished with status 'done' Building wheels for collected packages: vosk   Building wheel for vosk (pyproject.toml): started   Building wheel for vosk (pyproject.toml): finished with status 'done'   Created wheel for vosk: filename=vosk-0.3.50-py3-none-win_amd64.whl size=14040366 sha256=7e00314bc512678b2cdf47db2519faa3d43ff074caa6cff6bd8bcceb34d7b187   Stored in directory: /tmp/pip-ephem-wheel-cache-gtqz6a8u/wheels/83/7f/a8/bd9aea75feab8550d5003063ed5e11d39b360285b733be278d Successfully built vosk   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/70/7a/be4bd8bcbb24ea475856dd68159d78b03b2bb53dae369f69c9606b8888f5/pip-26.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/73/7e/d2b04004e1068ad4fdfa2f227b839b5d03e602e47cdbbf49de71137c9546/pip-26.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/3a/eb/fea4d1d51c49832120f7f285d07306db3960f423a2612c6057caf3e8196f/pip-26.1.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/b6/48/cb9b7a682f6fe01a4221e1728941dd4ac3cd9090a17db3779d6ff490b602/pip-26.1.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/01/91/47e7d486260f618783899587af63ccf7980fb60245c3e63dd4571c6b57ad/pip-26.1.2.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/db/96/e6f8e9d9d7b9cc4457092712a7e919c3186aa2c2fa9ffed2c5d29cc947e8/pip-26.2.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/ae/15/4500e320e6b101ec3b719ae85b697d9940b6cda672bc555bd6016fc60c6f/pip-26.2.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10) total 13712 drwxrwxrwx 1 root root     4096 Sep 27 06:16 . drwxrwxrwx 1 root root     4096 Sep 27 06:14 .. -rw-r--r-- 1 root root 14040366 Sep 27 06:16 vosk-0.3.50-py3-none-win_amd64.whl C:\Users\kugichka\home-assistant\windows\third_party\vosk-api\wheelhouse\vosk-0.3.50-py3-none-win_amd64.whl
+ERROR: Invalid requirement: 'x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o recognizer.o recognizer.cc': Expected semicolon (after name with no version specifier) or end
+    x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o recognizer.o recognizer.cc
+                        ^
+Hint: = is not a valid operator. Did you mean == ?
+pip failed to install vosk from x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o recognizer.o recognizer.cc
+ x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o language_model.o language_model.cc x86_64-w64-mingw32-g++
+-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o model.o model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-
+declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o spk_model.o spk_model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAM
+IC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o vosk_api.o vosk_api.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/s
+rc -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o postprocessor.o postprocessor.cc x86_64-w64-mingw32-g++-posix --shared -s -o libvosk.dll recognizer.o language_model.o model.o spk_model.o vosk_api.o postprocessor.o /opt/kaldi/kaldi/src/on
+line2/kaldi-online2.a /opt/kaldi/kaldi/src/decoder/kaldi-decoder.a /opt/kaldi/kaldi/src/ivector/kaldi-ivector.a /opt/kaldi/kaldi/src/gmm/kaldi-gmm.a /opt/kaldi/kaldi/src/tree/kaldi-tree.a /opt/kaldi/kaldi/src/feat/kaldi-feat.a /opt/kaldi/kaldi/src/lat/k
+aldi-lat.a /opt/kaldi/kaldi/src/lm/kaldi-lm.a /opt/kaldi/kaldi/src/rnnlm/kaldi-rnnlm.a /opt/kaldi/kaldi/src/hmm/kaldi-hmm.a /opt/kaldi/kaldi/src/nnet3/kaldi-nnet3.a /opt/kaldi/kaldi/src/transform/kaldi-transform.a /opt/kaldi/kaldi/src/cudamatrix/kaldi-c
+udamatrix.a /opt/kaldi/kaldi/src/matrix/kaldi-matrix.a /opt/kaldi/kaldi/src/fstext/kaldi-fstext.a /opt/kaldi/kaldi/src/util/kaldi-util.a /opt/kaldi/kaldi/src/base/kaldi-base.a /opt/kaldi/local/lib/libfst.a /opt/kaldi/local/lib/libfstngram.a /opt/kaldi/l
+ocal/lib/libopenblas.a /opt/kaldi/local/lib/liblapack.a /opt/kaldi/local/lib/libblas.a /opt/kaldi/local/lib/libf2c.a  -Wl,--out-implib,libvosk.lib Processing /io/python   Installing build dependencies: started   Installing build dependencies: finished w
+ith status 'done'   Getting requirements to build wheel: started   Getting requirements to build wheel: finished with status 'done'   Installing backend dependencies: started   Installing backend dependencies: finished with status 'done'   Preparing met
+adata (pyproject.toml): started   Preparing metadata (pyproject.toml): finished with status 'done' Building wheels for collected packages: vosk   Building wheel for vosk (pyproject.toml): started   Building wheel for vosk (pyproject.toml): finished with
+ status 'done'   Created wheel for vosk: filename=vosk-0.3.50-py3-none-win_amd64.whl size=14040366 sha256=7e00314bc512678b2cdf47db2519faa3d43ff074caa6cff6bd8bcceb34d7b187   Stored in directory: /tmp/pip-ephem-wheel-cache-gtqz6a8u/wheels/83/7f/a8/bd9aea7
+5feab8550d5003063ed5e11d39b360285b733be278d Successfully built vosk   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/70/7a/be4bd8bcbb24ea475856dd68159d78b03b2bb53dae369f69c9606b8888f5/pip-26.1-py3-none
+-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/73/7e/d2b04004e1068ad4fdfa2f227b839b5d03e602e47cdbbf49de71137c9546/pip-26.1.tar.gz
+ (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/3a/eb/fea4d1d51c49832120f7f285d07306db3960f423a2612c6057caf3e8196f/pip-26.1.1-py3-none-any
+.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/b6/48/cb9b7a682f6fe01a4221e1728941dd4ac3cd9090a17db3779d6ff490b602/pip-26.1.1.tar.gz (
+from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.w
+hl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/01/91/47e7d486260f618783899587af63ccf7980fb60245c3e63dd4571c6b57ad/pip-26.1.2.tar.gz (fr
+om https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl (
+from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/db/96/e6f8e9d9d7b9cc4457092712a7e919c3186aa2c2fa9ffed2c5d29cc947e8/pip-26.2.tar.gz (from htt
+ps://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl (from
+ https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.org/packages/ae/15/4500e320e6b101ec3b719ae85b697d9940b6cda672bc555bd6016fc60c6f/pip-26.2.1.tar.gz (from https
+://pypi.org/simple/pip/) (requires-python:>=3.10) total 13712 drwxrwxrwx 1 root root     4096 Sep 27 06:16 . drwxrwxrwx 1 root root     4096 Sep 27 06:14 .. -rw-r--r-- 1 root root 14040366 Sep 27 06:16 vosk-0.3.50-py3-none-win_amd64.whl C:\Users\kugichk
+a\home-assistant\windows\third_party\vosk-api\wheelhouse\vosk-0.3.50-py3-none-win_amd64.whl
+C:\Users\kugichka\home-assistant\windows\install-vosk.ps1:196 знак:9
++         throw "pip failed to install vosk from $wheelPath"
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (pip failed to i...e-win_amd64.whl:String) [], RuntimeException
+    + FullyQualifiedErrorId : pip failed to install vosk from x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -
+   c -o recognizer.o recognizer.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o language_model.o lang
+  uage_model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o model.o model.cc x86_64-w64-mingw32-g++
+ -posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o spk_model.o spk_model.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wn
+o-deprecated-declarations -fPIC -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o vosk_api.o vosk_api.cc x86_64-w64-mingw32-g++-posix -g -O3 -std=c++17 -Wno-deprecated-declarations -fPI    C
+ -DFST_NO_DYNAMIC_LINKING -I. -I/opt/kaldi/kaldi/src -I/opt/kaldi/local/include  -I/opt/kaldi/local/include -c -o postprocessor.o postprocessor.cc x86_64-w64-mingw32-g++-posix --shared -s -o libvosk.dll recognizer.o language_model.o model.o spk_mo    de
+l.o vosk_api.o postprocessor.o /opt/kaldi/kaldi/src/online2/kaldi-online2.a /opt/kaldi/kaldi/src/decoder/kaldi-decoder.a /opt/kaldi/kaldi/src/ivector/kaldi-ivector.a /opt/kaldi/kaldi/src/gmm/kaldi-gmm.a /opt/kaldi/kaldi/src/tree/kaldi-tree.a /opt    /ka
+ldi/kaldi/src/feat/kaldi-feat.a /opt/kaldi/kaldi/src/lat/kaldi-lat.a /opt/kaldi/kaldi/src/lm/kaldi-lm.a /opt/kaldi/kaldi/src/rnnlm/kaldi-rnnlm.a /opt/kaldi/kaldi/src/hmm/kaldi-hmm.a /opt/kaldi/kaldi/src/nnet3/kaldi-nnet3.a /opt/kaldi/kaldi/src/t    rans
+form/kaldi-transform.a /opt/kaldi/kaldi/src/cudamatrix/kaldi-cudamatrix.a /opt/kaldi/kaldi/src/matrix/kaldi-matrix.a /opt/kaldi/kaldi/src/fstext/kaldi-fstext.a /opt/kaldi/kaldi/src/util/kaldi-util.a /opt/kaldi/kaldi/src/base/kaldi-base.a /opt/k    aldi/
+local/lib/libfst.a /opt/kaldi/local/lib/libfstngram.a /opt/kaldi/local/lib/libopenblas.a /opt/kaldi/local/lib/liblapack.a /opt/kaldi/local/lib/libblas.a /opt/kaldi/local/lib/libf2c.a  -Wl,--out-implib,libvosk.lib Processing /io/python   Instal    ling b
+uild dependencies: started   Installing build dependencies: finished with status 'done'   Getting requirements to build wheel: started   Getting requirements to build wheel: finished with status 'done'   Installing backend dependencies: start    ed   In
+stalling backend dependencies: finished with status 'done'   Preparing metadata (pyproject.toml): started   Preparing metadata (pyproject.toml): finished with status 'done' Building wheels for collected packages: vosk   Building wheel for vo    sk (pypr
+oject.toml): started   Building wheel for vosk (pyproject.toml): finished with status 'done'   Created wheel for vosk: filename=vosk-0.3.50-py3-none-win_amd64.whl size=14040366 sha256=7e00314bc512678b2cdf47db2519faa3d43ff074caa6cff6bd8bcceb    34d7b187
+  Stored in directory: /tmp/pip-ephem-wheel-cache-gtqz6a8u/wheels/83/7f/a8/bd9aea75feab8550d5003063ed5e11d39b360285b733be278d Successfully built vosk   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhosted.o    rg/package
+s/70/7a/be4bd8bcbb24ea475856dd68159d78b03b2bb53dae369f69c9606b8888f5/pip-26.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonh    osted.org/p
+ackages/73/7e/d2b04004e1068ad4fdfa2f227b839b5d03e602e47cdbbf49de71137c9546/pip-26.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.pythonhost    ed.org/packa
+ges/3a/eb/fea4d1d51c49832120f7f285d07306db3960f423a2612c6057caf3e8196f/pip-26.1.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.p    ythonhosted.o
+rg/packages/b6/48/cb9b7a682f6fe01a4221e1728941dd4ac3cd9090a17db3779d6ff490b602/pip-26.1.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://files.py    thonhosted.org
+/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https:/    /files.pythonho
+sted.org/packages/01/91/47e7d486260f618783899587af63ccf7980fb60245c3e63dd4571c6b57ad/pip-26.1.2.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): https://    files.pythonhost
+ed.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): h    ttps://files.pyth
+onhosted.org/packages/db/96/e6f8e9d9d7b9cc4457092712a7e919c3186aa2c2fa9ffed2c5d29cc947e8/pip-26.2.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.10'): http    s://files.pythonho
+sted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl (from https://pypi.org/simple/pip/) (requires-python:>=3.10)   Link requires a different Python (3.9.2 not in: '>=3.1    0'): https://files.
+pythonhosted.org/packages/ae/15/4500e320e6b101ec3b719ae85b697d9940b6cda672bc555bd6016fc60c6f/pip-26.2.1.tar.gz (from https://pypi.org/simple/pip/) (requires-python:>=3.10) total 13712 drwxrwxrwx 1 root root     4096 Sep 27 06:16     . drwxrwxrwx 1 root
+root     4096 Sep 27 06:14 .. -rw-r--r-- 1 root root 14040366 Sep 27 06:16 vosk-0.3.50-py3-none-win_amd64.whl C:\Users\kugichka\home-assistant\windows\third_party\vosk-api\wheelhouse\vosk-0.3.50-py3-none-win_amd64.whl
+
+PS C:\Users\kugichka\home-assistant\windows>
+```
