@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from jarvis_pi.config import load_config
+from jarvis_pi.memory import MEMORY_RESPONSES_TOOLS, execute_memory_tool, get_memory_manager
 
 from . import python_runner
 from . import timer as timer_tool
@@ -25,6 +26,13 @@ _MAX_TURNS = 5
 _MAX_TOOL_ROUNDS = 6
 # Each turn: user message + model/tool output items for the next request.
 _TURNS: list[tuple[dict[str, object], list[dict[str, object]]]] = []
+
+
+def _clear_turns() -> None:
+    _TURNS.clear()
+
+
+get_memory_manager().set_clear_turns_callback(_clear_turns)
 _ABBREVIATION_TAILS = (
     "т.д.",
     "т.п.",
@@ -123,6 +131,7 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
             "additionalProperties": False,
         },
     },
+    *MEMORY_RESPONSES_TOOLS,
 ]
 
 
@@ -151,13 +160,20 @@ def _reasoning_body() -> dict[str, str]:
     return {"effort": effort}
 
 
-def _build_instructions() -> str:
+def _build_instructions(last_user_text: str = "") -> str:
     config = load_config()
     try:
         now = datetime.now(ZoneInfo(config.location_tz))
     except (OSError, ValueError):
         now = datetime.now()
     when = now.strftime("%d.%m.%Y %H:%M")
+
+    memory_block = ""
+    if last_user_text.strip():
+        memory_block = get_memory_manager().get_context_for_prompt(last_user_text)
+    memory_section = ""
+    if memory_block:
+        memory_section = f"\n\nДолговременная память (можно уточнить через search_memory):\n{memory_block}\n"
 
     return (
         "Ты домашний голосовой помощник в колонке. Старайся отвечать средне "
@@ -172,8 +188,12 @@ def _build_instructions() -> str:
         "Для таймеров вызывай set_timer (длительность в секундах). "
         "Для арифметики, процентов и «сколько до …» вызывай run_python — не считай в уме, "
         "пиши код с print() и озвучь результат своими словами. "
+        "Для воспоминаний о пользователе и прошлых разговорах вызывай search_memory; "
+        "если пользователь просит запомнить факт — add_memory (confidence EXTRACTED для явных фраз). "
+        "Профиль и недавние диалоги: get_profile, get_recent_episodes. "
         "Если пользователь хочет завершить разговор (спи, выключись, всё) — вызывай decline, "
         "без прощальной речи в ответе."
+        f"{memory_section}"
     )
 
 
@@ -252,6 +272,8 @@ def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
     if name == "run_python":
         code = str(args.get("code", ""))
         return python_runner.run_python(code), False
+    if name in ("search_memory", "add_memory", "get_profile", "get_recent_episodes"):
+        return execute_memory_tool(name, args), False
     return f"Неизвестная функция: {name}", False
 
 
@@ -403,10 +425,12 @@ def _speak_full_text(full_text: str, stream_callback: StreamCallback | None) -> 
 def _post_responses(
     api_key: str,
     request_input: list[dict[str, object]],
+    *,
+    last_user_text: str = "",
 ) -> tuple[dict[str, object] | None, str, bool]:
     body: dict[str, object] = {
         "model": _model(),
-        "instructions": _build_instructions(),
+        "instructions": _build_instructions(last_user_text),
         "input": request_input,
         "stream": True,
         "tool_choice": "auto",
@@ -449,13 +473,18 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
     if not api_key:
         return CommandExecutionResult(reply="Не настроен DEEPSEEK_API_KEY в .env.")
 
+    memory = get_memory_manager()
+    memory.ensure_session()
+
     user_item, request_input = _build_request_input(prompt)
     turn_history_items: list[dict[str, object]] = []
     spoken_during_handle = False
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS + 1):
-            final_response, full_text, has_function_calls = _post_responses(api_key, request_input)
+            final_response, full_text, has_function_calls = _post_responses(
+                api_key, request_input, last_user_text=prompt
+            )
 
             if final_response and final_response.get("status") == "failed":
                 err = final_response.get("error")
@@ -489,6 +518,8 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
                     request_input.append(tool_output)
                     turn_history_items.append(tool_output)
                 if decline_requested:
+                    memory.record_user_only(prompt)
+                    memory.end_session(summarize=True)
                     return CommandExecutionResult(reply="", end_session=True)
                 continue
 
@@ -498,6 +529,8 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
 
             turn_history_items.extend(output_items)
             _commit_turn(user_item, turn_history_items)
+            memory.record_exchange(prompt, sanitized_full_text)
+            memory.touch_interaction()
             if stream_callback is not None:
                 _speak_full_text(full_text, stream_callback)
                 spoken_during_handle = True

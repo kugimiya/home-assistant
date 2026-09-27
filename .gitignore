@@ -5,3 +5,4 @@ creds.txt
 *.pyc
 windows/models/
 windows/third_party/
+pi/data/

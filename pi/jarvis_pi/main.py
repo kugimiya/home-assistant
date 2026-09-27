@@ -12,6 +12,7 @@ from pathlib import Path
 from jarvis_pi.audio_io import PcmCapture, play_pcm, play_wav
 from jarvis_pi.commands import think
 from jarvis_pi.config import load_config
+from jarvis_pi.memory import get_memory_manager
 from jarvis_pi.sounds_paths import accept_wav, decline_wav, networking_wav
 from jarvis_pi.wake import WakeStateMachine, normalize_text
 from jarvis_pi.windows_client import WindowsClient
@@ -212,6 +213,7 @@ def main() -> None:
         LOGGER.info("Stopping...")
     finally:
         cancel_pending_command()
+        get_memory_manager().shutdown()
         capture.stop()
         client.close()
 
