@@ -97,9 +97,13 @@ class WakeStateMachine:
 
         wake_word, remainder = self._find_wake(normalized)
         if wake_word and not remainder:
+            # Wake-only final while already listening: keep window open.
+            self._awake_since = time.time()
             return None, False, False
 
-        self._awake = False
+        # Keep listening until the caller commits/processes the command.
+        # Clearing awake here dropped follow-up finals during STT_COMMAND_COMMIT_SEC.
+        self._awake_since = time.time()
         if remainder:
             return remainder, False, False
         return normalized, False, False

@@ -53,7 +53,8 @@ def main() -> None:
                 pending_command_timer.cancel()
                 pending_command_timer = None
 
-    def schedule_command(text: str) -> None:
+    def _arm_commit_timer(text: str) -> None:
+        """Start/restart the debounce timer for a pending command text."""
         nonlocal pending_command, pending_command_timer
 
         def commit() -> None:
@@ -61,8 +62,12 @@ def main() -> None:
                 if pending_command != text:
                     return
                 pending_command_local = text
+            # Stop listening only when the command is actually handed to the worker.
+            with state_lock:
+                wake_machine.reset()
             action_queue.put(pending_command_local)
             cancel_pending_command()
+            LOGGER.info("STT final committed -> queue: %s", _preview(pending_command_local))
 
         with pending_command_lock:
             pending_command = text
@@ -72,9 +77,44 @@ def main() -> None:
             pending_command_timer = threading.Timer(delay, commit)
             pending_command_timer.daemon = True
             pending_command_timer.start()
+
+    def schedule_command(text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        with pending_command_lock:
+            previous = pending_command
+        if previous and previous != text:
+            # Another final while still debouncing: keep both (Vosk often splits one speech).
+            if text in previous:
+                merged = previous
+            elif previous in text:
+                merged = text
+            else:
+                merged = f"{previous} {text}".strip()
+            if merged != text:
+                LOGGER.info(
+                    "STT final merged into pending (%d -> %d chars)",
+                    len(previous),
+                    len(merged),
+                )
+            text = merged
+        _arm_commit_timer(text)
         LOGGER.info(
             "STT final scheduled (commit in %.1fs unless speech continues): %s",
             config.stt_command_commit_sec,
+            _preview(text),
+        )
+
+    def bump_pending_commit_on_partial() -> None:
+        """Speech continued after a final: keep text, restart commit delay."""
+        with pending_command_lock:
+            text = pending_command
+        if not text:
+            return
+        _arm_commit_timer(text)
+        LOGGER.info(
+            "STT commit delayed (speech continues), still pending: %s",
             _preview(text),
         )
 
@@ -179,12 +219,15 @@ def main() -> None:
             LOGGER.debug("STT partial: %s", _preview(text))
 
         if not is_final:
-            cancel_pending_command()
+            # Do NOT cancel a scheduled final on partial — user often keeps talking
+            # after Vosk's first endpointer final. Just push the commit deadline.
+            bump_pending_commit_on_partial()
 
         with state_lock:
             command, woke_now, timed_out = wake_machine.process(text, is_final=is_final)
             if timed_out:
                 LOGGER.info("Command window expired on phrase: %s", _preview(text))
+                cancel_pending_command()
                 action_queue.put("__timeout__")
                 return
             if woke_now:
@@ -208,6 +251,7 @@ def main() -> None:
             with state_lock:
                 if wake_machine.check_timeout():
                     LOGGER.info("Command window expired (silence)")
+                    cancel_pending_command()
                     action_queue.put("__timeout__")
     except KeyboardInterrupt:
         LOGGER.info("Stopping...")
