@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import threading
 from pathlib import Path
 from typing import IO
+
+LOGGER = logging.getLogger("jarvis_pi.audio_io")
 
 
 class PcmCapture:
@@ -50,7 +53,10 @@ class PcmCapture:
             chunk = self._process.stdout.read(3200)
             if not chunk:
                 break
-            sink.write(chunk)
+            try:
+                sink.write(chunk)
+            except OSError as exc:
+                LOGGER.warning("PCM uplink write failed: %s", exc)
 
     def stop(self) -> None:
         self._stop.set()
