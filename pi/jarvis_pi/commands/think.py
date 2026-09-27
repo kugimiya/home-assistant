@@ -23,7 +23,7 @@ from .types import CommandExecutionResult, StreamCallback
 _DEFAULT_RESPONSES_URL = "https://api.deepseek.com/responses"
 _DEFAULT_MODEL = "deepseek-flash"
 _REQUEST_TIMEOUT_SEC = 120
-_MAX_TURNS = 5
+_MAX_TURNS = 8
 _MAX_TOOL_ROUNDS = 6
 # Each turn: user message + model/tool output items for the next request.
 _TURNS: list[tuple[dict[str, object], list[dict[str, object]]]] = []
