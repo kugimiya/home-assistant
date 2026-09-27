@@ -121,16 +121,23 @@ Install Docker Desktop, start it (Linux containers), then re-run install.ps1 / f
     Copy-Item -Force $buildScriptHost (Join-Path $srcDir "build-vosk-wheel-win.sh")
 
     $imageTag = "jarvis-kaldi-win:latest"
-    $dockerfile = Join-Path $srcDir "travis/Dockerfile.win"
+    # Our Dockerfile fixes Debian 11 apt (archive.debian.org) — upstream travis/Dockerfile.win
+    # often fails with apt-get exit 100 on current Docker hosts.
+    $dockerfile = Join-Path $ProjectRoot "Dockerfile.vosk-win"
     if (-not (Test-Path $dockerfile)) {
         throw "Dockerfile not found: $dockerfile"
     }
 
     Write-Host ""
-    Write-Host "Building Docker image $imageTag (first time builds Kaldi — can take 1–3+ hours)..."
-    & docker build --file $dockerfile --tag $imageTag (Join-Path $srcDir "travis")
+    Write-Host "Building Docker image $imageTag (first time builds Kaldi - can take 1-3+ hours)..."
+    Write-Host "Using $dockerfile (Debian 11 apt archive fix)"
+    & docker build --progress=plain --file $dockerfile --tag $imageTag $ProjectRoot
     if ($LASTEXITCODE -ne 0) {
-        throw "docker build of Kaldi/MinGW image failed"
+        throw @"
+docker build of Kaldi/MinGW image failed.
+If apt still fails: check Docker network/VPN, then:
+  docker build --progress=plain --file Dockerfile.vosk-win --tag jarvis-kaldi-win:latest .
+"@
     }
 
     if (Test-Path $wheelhouse) {

@@ -26,7 +26,7 @@ cd windows
 
 Откройте в брандмауэре TCP `9700` и `9701` для IP платы.
 
-Python-пакет **vosk 0.3.50** собирается локально через Docker (`install-vosk.ps1`), не с PyPI: у тега `v0.3.50` на GitHub нет `win_amd64.whl`. Нужен **Docker Desktop** (Linux containers); первая сборка Kaldi/MinGW может занять часы. Повторный `fix.ps1` ставит кэш из `third_party/vosk-api/wheelhouse`. Пересобрать: `VOSK_FORCE_REBUILD=1`.
+Python-пакет **vosk 0.3.50** собирается локально через Docker (`install-vosk.ps1` + `Dockerfile.vosk-win`), не с PyPI. Нужен **Docker Desktop** (Linux containers); первая сборка Kaldi/MinGW может занять часы. Повторный `fix.ps1` ставит кэш из `third_party/vosk-api/wheelhouse`. Пересобрать: `VOSK_FORCE_REBUILD=1`.
 
 ## Raspberry Pi
 
