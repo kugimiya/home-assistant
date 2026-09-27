@@ -15,6 +15,7 @@ from jarvis_pi.memory import MEMORY_RESPONSES_TOOLS, execute_memory_tool, get_me
 
 from . import python_runner
 from . import timer as timer_tool
+from . import volume as volume_tool
 from . import web_search as web_search_tool
 from . import weather
 from .types import CommandExecutionResult, StreamCallback
@@ -96,6 +97,44 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
                 },
             },
             "required": ["duration_seconds"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "set_speaker_volume",
+        "description": (
+            "Установить громкость вывода (колонка, ALSA-контроль Speaker) "
+            "на устройстве воспроизведения. Проценты от 0 до 100."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "percent": {
+                    "type": "integer",
+                    "description": "Громкость колонки от 0 до 100.",
+                }
+            },
+            "required": ["percent"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "set_mic_volume",
+        "description": (
+            "Установить громкость ввода (микрофон, ALSA-контроль Mic) "
+            "на устройстве записи. Проценты от 0 до 100."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "percent": {
+                    "type": "integer",
+                    "description": "Громкость микрофона от 0 до 100.",
+                }
+            },
+            "required": ["percent"],
             "additionalProperties": False,
         },
     },
@@ -186,6 +225,8 @@ def _build_instructions(last_user_text: str = "") -> str:
         "Для свежих фактов из интернета вызывай web_search — не отказывайся от поиска, "
         "если пользователь просит найти или узнать актуальное. "
         "Для таймеров вызывай set_timer (длительность в секундах). "
+        "Для громкости колонки вызывай set_speaker_volume, для микрофона set_mic_volume "
+        "(целое число процентов от 0 до 100). "
         "Для арифметики, процентов и «сколько до …» вызывай run_python — не считай в уме, "
         "пиши код с print() и озвучь результат своими словами. "
         "Для воспоминаний о пользователе и прошлых разговорах вызывай search_memory; "
@@ -269,6 +310,10 @@ def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
         label = str(args.get("label", ""))
         duration_raw = args.get("duration_seconds", 0)
         return timer_tool.schedule_timer(duration_raw, label=label), False
+    if name == "set_speaker_volume":
+        return volume_tool.set_speaker_volume(args.get("percent")), False
+    if name == "set_mic_volume":
+        return volume_tool.set_mic_volume(args.get("percent")), False
     if name == "run_python":
         code = str(args.get("code", ""))
         return python_runner.run_python(code), False
