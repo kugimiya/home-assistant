@@ -10,28 +10,39 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 
 LOGGER = logging.getLogger("jarvis_win.stt_vosk")
 
-# vosk.EndpointerMode values (stable in vosk-api)
-_ENDPOINT_DEFAULT = 0
-_ENDPOINT_SHORT = 1
-_ENDPOINT_LONG = 2
-_ENDPOINT_VERY_LONG = 3
+try:
+    from vosk import EndpointerMode as _EndpointerMode
+except ImportError:  # older vosk wheels without the enum
+    _EndpointerMode = None  # type: ignore[misc, assignment]
 
 
 def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
 
-def _endpointer_mode_value(raw: str) -> int:
+def _endpointer_mode(raw: str):
+    """Return vosk EndpointerMode enum (0.3.50+) or int fallback."""
     value = raw.strip().lower()
+    if _EndpointerMode is not None:
+        if value in {"very_long", "very-long", "verylong"}:
+            return _EndpointerMode.VERY_LONG
+        if value == "long":
+            return _EndpointerMode.LONG
+        if value == "short":
+            return _EndpointerMode.SHORT
+        if value in {"default", ""}:
+            return _EndpointerMode.DEFAULT
+        return _EndpointerMode.LONG
+
     if value in {"very_long", "very-long", "verylong"}:
-        return _ENDPOINT_VERY_LONG
+        return 3
     if value == "long":
-        return _ENDPOINT_LONG
+        return 2
     if value == "short":
-        return _ENDPOINT_SHORT
+        return 1
     if value in {"default", ""}:
-        return _ENDPOINT_DEFAULT
-    return _ENDPOINT_LONG
+        return 0
+    return 2
 
 
 def _configure_recognizer(recognizer: KaldiRecognizer) -> None:
@@ -45,14 +56,25 @@ def _configure_recognizer(recognizer: KaldiRecognizer) -> None:
         return
 
     if has_mode:
-        mode = _endpointer_mode_value(os.getenv("VOSK_ENDPOINT_MODE", "long"))
-        recognizer.SetEndpointerMode(mode)
+        mode = _endpointer_mode(os.getenv("VOSK_ENDPOINT_MODE", "long"))
+        try:
+            recognizer.SetEndpointerMode(mode)
+        except Exception:
+            LOGGER.exception("SetEndpointerMode(%s) failed", mode)
 
     if has_delays:
         t_start_max = float(os.getenv("VOSK_ENDPOINT_START_MAX_SEC", "5.0"))
         t_end = float(os.getenv("VOSK_ENDPOINT_TRAILING_SEC", "1.2"))
         t_max = float(os.getenv("VOSK_ENDPOINT_MAX_UTTERANCE_SEC", "30.0"))
-        recognizer.SetEndpointerDelays(t_start_max, t_end, t_max)
+        try:
+            recognizer.SetEndpointerDelays(t_start_max, t_end, t_max)
+        except Exception:
+            LOGGER.exception(
+                "SetEndpointerDelays(%s, %s, %s) failed",
+                t_start_max,
+                t_end,
+                t_max,
+            )
 
 
 class VoskEngine:
