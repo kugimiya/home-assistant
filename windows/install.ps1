@@ -68,8 +68,11 @@ if (-not (Test-Path (Join-Path $Root ".venv"))) {
     python -m venv .venv
 }
 
-& (Join-Path $Root ".venv/Scripts/python.exe") -m pip install --upgrade pip
-& (Join-Path $Root ".venv/Scripts/python.exe") -m pip install -r requirements.txt
+$venvPython = Join-Path $Root ".venv/Scripts/python.exe"
+& $venvPython -m pip install --upgrade pip
+& $venvPython -m pip install -r requirements.txt
+. (Join-Path $Root "install-vosk.ps1")
+Install-VoskFromGitHub -PythonExe $venvPython -ProjectRoot $Root
 
 $envExample = Join-Path $Root ".env.example"
 $envFile = Join-Path $Root ".env"

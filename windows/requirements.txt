@@ -1,2 +1,2 @@
-vosk>=0.3.45
 python-dotenv
+# vosk — из GitHub: pip install -r requirements-vosk-github.txt (см. install.ps1 / fix.ps1)

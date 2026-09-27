@@ -26,6 +26,8 @@ cd windows
 
 Откройте в брандмауэре TCP `9700` и `9701` для IP платы.
 
+Python-пакет **vosk** ставится из [релизов GitHub](https://github.com/alphacep/vosk-api/releases) (`install-vosk.ps1`), не с PyPI. Другой тег: `VOSK_GITHUB_REF` в `.env`.
+
 ## Raspberry Pi
 
 ```bash

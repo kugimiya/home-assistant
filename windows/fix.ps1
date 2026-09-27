@@ -73,6 +73,8 @@ if (-not (Test-Path $venvPython)) {
 Write-Host "Installing Python packages..."
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r requirements.txt
+. (Join-Path $Root "install-vosk.ps1")
+Install-VoskFromGitHub -PythonExe $venvPython -ProjectRoot $Root
 
 Write-Host "Verifying imports..."
 & $venvPython -c "import dotenv; import vosk; print('dotenv + vosk OK')"
