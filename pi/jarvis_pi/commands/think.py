@@ -231,7 +231,8 @@ def _build_instructions(last_user_text: str = "") -> str:
         "пиши код с print() и озвучь результат своими словами. "
         "Для воспоминаний о пользователе и прошлых разговорах вызывай search_memory; "
         "если пользователь просит запомнить факт — add_memory (confidence EXTRACTED для явных фраз). "
-        "Профиль и недавние диалоги: get_profile, get_recent_episodes. "
+        "Профиль: get_profile. Что сохранено в памяти целиком (факты и эпизоды): list_memory. "
+        "Отдельно последние эпизоды: get_recent_episodes. "
         "Если пользователь хочет завершить разговор (спи, выключись, всё) — вызывай decline, "
         "без прощальной речи в ответе."
         f"{memory_section}"
@@ -317,7 +318,13 @@ def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
     if name == "run_python":
         code = str(args.get("code", ""))
         return python_runner.run_python(code), False
-    if name in ("search_memory", "add_memory", "get_profile", "get_recent_episodes"):
+    if name in (
+        "search_memory",
+        "add_memory",
+        "get_profile",
+        "get_recent_episodes",
+        "list_memory",
+    ):
         return execute_memory_tool(name, args), False
     return f"Неизвестная функция: {name}", False
 

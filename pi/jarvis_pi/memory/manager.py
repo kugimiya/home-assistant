@@ -443,6 +443,51 @@ class MemoryManager:
             for row in rows
         ]
 
+    def list_facts(self, limit: int = 20) -> list[dict[str, object]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id, fact_text, source, confidence, tags, created_at
+                FROM facts
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "fact_text": row["fact_text"],
+                "source": row["source"],
+                "confidence": row["confidence"],
+                "tags": row["tags"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def memory_inventory(
+        self,
+        *,
+        facts_limit: int = 15,
+        episodes_limit: int = 10,
+    ) -> dict[str, object]:
+        with self._lock:
+            facts_total = int(
+                self._conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+            )
+            episodes_total = int(
+                self._conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0]
+            )
+        facts = self.list_facts(limit=facts_limit)
+        episodes = self.get_recent_episodes(limit=episodes_limit)
+        return {
+            "facts_total": facts_total,
+            "episodes_total": episodes_total,
+            "facts": facts,
+            "episodes": episodes,
+        }
+
     def get_context_for_prompt(self, last_user_text: str) -> str:
         profile = self.get_profile()
         hits = self.search(last_user_text, limit=5) if last_user_text.strip() else []
