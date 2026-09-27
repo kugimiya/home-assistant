@@ -86,14 +86,20 @@ class WindowsClient:
         return False
 
     def _open_sockets(self) -> None:
+        # create_connection(timeout=...) leaves that timeout on the socket.
+        # Control reads are often idle for long stretches (no STT), so clear it
+        # after connect — otherwise recv raises socket.timeout every N seconds
+        # and the reader treats it as a dead link.
         self._control_socket = socket.create_connection(
             (self._host, self._control_port), timeout=10.0
         )
+        self._control_socket.settimeout(None)
         self._control_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._control_socket.sendall(encode_message({"type": "hello", "role": "pi"}))
         self._pcm_socket = socket.create_connection(
             (self._host, self._pcm_port), timeout=10.0
         )
+        self._pcm_socket.settimeout(None)
         self._pcm_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     def _close_sockets(self) -> None:
@@ -179,6 +185,9 @@ class WindowsClient:
                 continue
             try:
                 message = self._read_message(sock)
+            except socket.timeout:
+                # Idle control channel is normal; do not reconnect.
+                continue
             except (ConnectionError, OSError):
                 if self._reader_stop.is_set():
                     break
