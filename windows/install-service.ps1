@@ -21,7 +21,7 @@ if ($Uninstall) {
 }
 
 if (-not (Test-Path $PythonExe)) {
-    throw "Missing venv Python: $PythonExe — run .\install.ps1 first"
+    throw "Missing venv Python: $PythonExe. Run .\install.ps1 first."
 }
 
 $action = New-ScheduledTaskAction `
