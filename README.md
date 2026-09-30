@@ -24,6 +24,15 @@ cd windows
 
 Из Git Bash: `./fix.sh`
 
+Автозапуск при загрузке и перезапуск после падения (Планировщик заданий; перезапуск не чаще раза в минуту):
+
+```powershell
+cd windows
+.\install-service.ps1
+```
+
+Снять: `.\install-service.ps1 -Uninstall`
+
 Откройте в брандмауэре TCP `9700` и `9701` для IP платы.
 
 Python-пакет **vosk 0.3.50** собирается локально через Docker (`install-vosk.ps1` + `Dockerfile.vosk-win`), не с PyPI. Нужен **Docker Desktop** (Linux containers); первая сборка Kaldi/MinGW может занять часы. Повторный `fix.ps1` ставит кэш из `third_party/vosk-api/wheelhouse`. Пересобрать: `VOSK_FORCE_REBUILD=1`.
@@ -48,3 +57,13 @@ Wake-фразы по умолчанию: `компьютер`, `джарвис`,
 sudo apt install at
 sudo systemctl enable --now atd
 ```
+
+Автозапуск при загрузке и перезапуск после падения (user systemd + linger). Перед стартом USB-карта из `ARECORD_DEVICE` становится дефолтной; микрофон 45%, выход 25% (`MIC_BOOT_PERCENT`, `SPEAKER_BOOT_PERCENT` в `.env`):
+
+```bash
+cd pi
+chmod +x install-service.sh set-usb-audio.sh
+./install-service.sh
+```
+
+Снять: `./install-service.sh --uninstall`
