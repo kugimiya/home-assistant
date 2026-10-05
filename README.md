@@ -35,6 +35,8 @@ cd windows
 
 Откройте в брандмауэре TCP `9700` и `9701` для IP платы.
 
+STT (Vosk) и TTS (Piper) на Windows **не грузятся при старте** процесса: Pi после подключения шлёт `health`, при необходимости `reload_modules` (`stt`, `tts` или `all`). Тот же цикл повторяется каждые `WINDOWS_HEALTH_INTERVAL_SEC` (по умолчанию 600) в `.env` на Pi. Control-канал: `health` / `reload_result` с полями `stt` и `tts` (`state`: `unloaded` | `loading` | `ready` | `error`). Синтез `speak` выполняется в отдельном потоке, чтобы `health` отвечал и при долгом Piper. Таймаут синтеза: `PIPER_SYNTH_TIMEOUT_SEC` (default 120), probe при reload TTS: `PIPER_PROBE_TIMEOUT_SEC` (default 30).
+
 Python-пакет **vosk 0.3.50** собирается локально через Docker (`install-vosk.ps1` + `Dockerfile.vosk-win`), не с PyPI. Нужен **Docker Desktop** (Linux containers); первая сборка Kaldi/MinGW может занять часы. Повторный `fix.ps1` ставит кэш из `third_party/vosk-api/wheelhouse`. Пересобрать: `VOSK_FORCE_REBUILD=1`.
 
 ## Raspberry Pi

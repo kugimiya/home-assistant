@@ -23,6 +23,42 @@ STT_POST_TTS_GRACE_SEC = 0.7
 POST_COMMAND_RELISTEN_DELAY_SEC = 1.0
 
 
+def _modules_needing_reload(health: dict) -> list[str]:
+    reload: list[str] = []
+    for name in ("stt", "tts"):
+        state = health.get(name, {}).get("state")
+        if state != "ready":
+            reload.append(name)
+    return reload
+
+
+def ensure_windows_modules(client: WindowsClient) -> None:
+    """Health check and reload STT/TTS on Windows when not ready."""
+    try:
+        health = client.request_health()
+    except (OSError, TimeoutError) as exc:
+        LOGGER.warning("Windows health check failed: %s", exc)
+        if not client.reconnect(reason="health check"):
+            return
+        try:
+            health = client.request_health()
+        except (OSError, TimeoutError) as retry_exc:
+            LOGGER.warning("Windows health check failed after reconnect: %s", retry_exc)
+            return
+
+    modules = _modules_needing_reload(health)
+    if not modules:
+        LOGGER.debug("Windows health ok (stt=%s, tts=%s)", health.get("stt"), health.get("tts"))
+        return
+
+    LOGGER.info("Windows modules not ready (%s), reloading: %s", health, modules)
+    try:
+        result = client.request_reload(modules)
+        LOGGER.info("Windows reload finished: %s", result)
+    except (OSError, TimeoutError) as exc:
+        LOGGER.warning("Windows reload failed: %s", exc)
+
+
 def _preview(text: str, limit: int = 160) -> str:
     text = text.strip()
     if len(text) <= limit:
@@ -202,7 +238,10 @@ def main() -> None:
             return
 
         msg_type = message.get("type")
-        if msg_type in {"hello", "ready", "audio"}:
+        if msg_type in {"hello", "ready", "audio", "health", "reload_result"}:
+            return
+        if msg_type == "error":
+            LOGGER.warning("Windows error event: %s", message)
             return
         if msg_type not in {"partial", "final"}:
             return
@@ -237,8 +276,16 @@ def main() -> None:
                 LOGGER.info("Command detected: %s", _preview(command))
                 schedule_command(command)
 
+    def health_monitor_loop() -> None:
+        interval = config.windows_health_interval_sec
+        while True:
+            time.sleep(interval)
+            ensure_windows_modules(client)
+
     threading.Thread(target=worker_loop, daemon=True).start()
     client.start_control_reader(handle_stt_message)
+    ensure_windows_modules(client)
+    threading.Thread(target=health_monitor_loop, daemon=True).start()
     capture.start(client.pcm_write_sink())
 
     LOGGER.info("Wake words: %s", ", ".join(config.wake_words))

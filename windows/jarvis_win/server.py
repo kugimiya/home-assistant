@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import select
 import socket
+import subprocess
 import sys
 import threading
+from dataclasses import dataclass
 from typing import Protocol
 
+from jarvis_win.audio_modules import AudioModules
 from jarvis_win.config import WindowsConfig
 from jarvis_win.protocol import decode_message, encode_message
-from jarvis_win.tts_piper import synthesize_pcm
+from jarvis_win.tts_piper import default_synth_timeout_sec, synthesize_pcm
 
 LOGGER = logging.getLogger("jarvis_win.server")
 
@@ -66,6 +70,13 @@ class ControlChannel:
 
     def has_complete_line(self) -> bool:
         return b"\n" in self._buffer
+
+
+@dataclass(frozen=True)
+class _SpeakJob:
+    channel: ControlChannel
+    request_id: str
+    text: str
 
 
 def _close_socket(sock: socket.socket) -> None:
@@ -131,36 +142,120 @@ class _PcmSession:
 class AudioService:
     def __init__(self, config: WindowsConfig, vosk: _RecognizerFactory | None = None) -> None:
         self._config = config
+        self._modules = AudioModules(config, stt_factory=vosk)
         self._control: ControlChannel | None = None
         self._control_lock = threading.Lock()
         self._pcm_session: _PcmSession | None = None
         self._pcm_session_lock = threading.Lock()
-        if vosk is None:
-            LOGGER.info("Loading Vosk model from %s", config.vosk_model_path)
-            from jarvis_win.stt_vosk import VoskEngine
-
-            self._vosk: _RecognizerFactory = VoskEngine(
-                str(config.vosk_model_path),
-                config.sample_rate,
-            )
-            LOGGER.info("Vosk model loaded")
-        else:
-            self._vosk = vosk
+        self._speak_queue: queue.Queue[_SpeakJob | None] = queue.Queue()
 
     def _reset_stt(self, reason: str) -> None:
+        if not self._modules.stt_ready():
+            LOGGER.debug("STT reset skipped (%s): module not ready", reason)
+            return
         with self._pcm_session_lock:
             session = self._pcm_session
         if session:
             session.reset()
             LOGGER.info("STT recognizer reset (%s)", reason)
 
+    def _on_stt_reloaded(self) -> None:
+        with self._pcm_session_lock:
+            session = self._pcm_session
+        if session:
+            factory = self._modules.get_stt_factory()
+            if factory is not None:
+                with self._pcm_session_lock:
+                    self._pcm_session = _PcmSession(factory)
+                LOGGER.info("STT PCM session recreated after reload")
+
     def run(self) -> None:
+        speak_thread = threading.Thread(target=self._speak_worker, daemon=True)
+        speak_thread.start()
         control_thread = threading.Thread(target=self._serve_control, daemon=True)
         pcm_thread = threading.Thread(target=self._serve_pcm, daemon=True)
         control_thread.start()
         pcm_thread.start()
         control_thread.join()
         pcm_thread.join()
+        self._speak_queue.put(None)
+        speak_thread.join(timeout=5)
+
+    def _speak_worker(self) -> None:
+        while True:
+            job = self._speak_queue.get()
+            if job is None:
+                return
+            self._run_speak(job)
+
+    def _run_speak(self, job: _SpeakJob) -> None:
+        channel = job.channel
+        request_id = job.request_id
+        text = job.text
+        if not self._modules.tts_ready():
+            try:
+                channel.send_json(
+                    {
+                        "type": "error",
+                        "id": request_id,
+                        "code": "tts_not_ready",
+                        "message": "TTS module is not ready",
+                    }
+                )
+            except (ConnectionError, OSError) as exc:
+                LOGGER.info("Control client disconnected during speak error: %s", exc)
+            return
+
+        try:
+            audio, sample_rate = synthesize_pcm(
+                text,
+                self._config.piper_bin,
+                self._config.piper_model,
+                self._config.piper_config,
+                timeout=default_synth_timeout_sec(),
+            )
+            channel.send_audio(request_id, sample_rate, audio)
+        except (ConnectionError, OSError) as exc:
+            LOGGER.info("Control client disconnected during speak: %s", exc)
+        except subprocess.TimeoutExpired:
+            self._modules.mark_tts_error("Piper synthesis timed out")
+            try:
+                channel.send_json(
+                    {
+                        "type": "error",
+                        "id": request_id,
+                        "code": "tts_timeout",
+                        "message": "Piper synthesis timed out",
+                    }
+                )
+            except (ConnectionError, OSError):
+                pass
+        except subprocess.CalledProcessError as exc:
+            self._modules.mark_tts_error(f"Piper failed: {exc}")
+            try:
+                channel.send_json(
+                    {
+                        "type": "error",
+                        "id": request_id,
+                        "code": "tts_failed",
+                        "message": str(exc),
+                    }
+                )
+            except (ConnectionError, OSError):
+                pass
+        except Exception as exc:
+            self._modules.mark_tts_error(str(exc))
+            try:
+                channel.send_json(
+                    {
+                        "type": "error",
+                        "id": request_id,
+                        "code": "tts_failed",
+                        "message": str(exc),
+                    }
+                )
+            except (ConnectionError, OSError):
+                pass
 
     def _serve_control(self) -> None:
         server = self._listen_socket(self._config.control_listen_host, self._config.control_listen_port)
@@ -185,18 +280,12 @@ class AudioService:
                     with self._control_lock:
                         self._control = channel
 
-                # A line already buffered must not wait for the next socket event,
-                # or the second message in one recv sits unread until more bytes arrive.
                 if channel.has_complete_line():
                     if not self._take_control_message(conn, channel):
                         conn = None
                         channel = None
                     continue
 
-                # Watch the listener together with the client. A reconnected Pi
-                # completes the TCP handshake into the backlog while the previous
-                # socket is still half-open; accept() has to run or that client
-                # is never read.
                 readable = _select_readable([conn, server], None)
                 if server in readable:
                     LOGGER.info("Control client replaced by a new connection")
@@ -242,6 +331,24 @@ class AudioService:
             if msg_type == "hello":
                 channel.send_json({"type": "ready"})
                 return True
+            if msg_type == "health":
+                request_id = str(message.get("id", ""))
+                channel.send_json(self._modules.health_payload(request_id))
+                return True
+            if msg_type == "reload_modules":
+                request_id = str(message.get("id", ""))
+                raw_modules = message.get("modules", [])
+                modules = list(raw_modules) if isinstance(raw_modules, list) else ["all"]
+                parts = self._modules.reload(modules, on_stt_reloaded=self._on_stt_reloaded)
+                channel.send_json(
+                    {
+                        "type": "reload_result",
+                        "id": request_id,
+                        "stt": parts["stt"],
+                        "tts": parts["tts"],
+                    }
+                )
+                return True
             if msg_type == "stt_reset":
                 self._reset_stt("pi request")
                 return True
@@ -251,26 +358,27 @@ class AudioService:
             request_id = str(message.get("id", ""))
             text = str(message.get("text", ""))
             LOGGER.info("Synthesize request %s (%d chars)", request_id, len(text))
-            audio, sample_rate = synthesize_pcm(
-                text,
-                self._config.piper_bin,
-                self._config.piper_model,
-                self._config.piper_config,
-            )
-            channel.send_audio(request_id, sample_rate, audio)
+            self._speak_queue.put(_SpeakJob(channel=channel, request_id=request_id, text=text))
             return True
         except (ConnectionError, OSError) as exc:
             LOGGER.info("Control client disconnected: %s", exc)
             return False
 
+    def _pcm_session_for_factory(self, factory: _RecognizerFactory) -> _PcmSession:
+        with self._pcm_session_lock:
+            session = self._pcm_session
+            if session is None:
+                session = _PcmSession(factory)
+                self._pcm_session = session
+            return session
+
     def _serve_pcm(self) -> None:
         server = self._listen_socket(self._config.pcm_listen_host, self._config.pcm_listen_port)
         LOGGER.info("PCM listening on %s:%s", self._config.pcm_listen_host, self._config.pcm_listen_port)
         conn: socket.socket | None = None
-        session: _PcmSession | None = None
         try:
             while True:
-                if conn is None or session is None:
+                if conn is None:
                     try:
                         conn, addr = server.accept()
                     except OSError as exc:
@@ -278,54 +386,62 @@ class AudioService:
                             raise
                         LOGGER.warning("PCM accept failed: %s", exc)
                         conn = None
-                        session = None
                         continue
                     LOGGER.info("PCM connected from %s", addr[0])
                     _prepare_client_socket(conn)
-                    session = _PcmSession(self._vosk)
                     with self._pcm_session_lock:
-                        self._pcm_session = session
+                        self._pcm_session = None
+
+                factory = self._modules.get_stt_factory()
+                session: _PcmSession | None = None
+                if factory is not None:
+                    session = self._pcm_session_for_factory(factory)
 
                 uplink_gap_sec = float(os.getenv("PCM_UPLINK_GAP_RESET_SEC", "1.0"))
                 readable = _select_readable([conn, server], uplink_gap_sec)
                 if server in readable:
                     LOGGER.info("PCM client replaced by a new connection")
-                    self._detach_pcm(conn, session)
+                    self._detach_pcm(conn)
                     conn = None
-                    session = None
                     continue
                 if not readable:
-                    session.reset()
-                    LOGGER.info(
-                        "STT recognizer reset (uplink gap > %.2fs)",
-                        uplink_gap_sec,
-                    )
+                    if session is not None:
+                        session.reset()
+                        LOGGER.info(
+                            "STT recognizer reset (uplink gap > %.2fs)",
+                            uplink_gap_sec,
+                        )
                     continue
                 try:
                     chunk = conn.recv(3200)
                 except OSError as exc:
                     LOGGER.info("PCM client disconnected: %s", exc)
-                    self._detach_pcm(conn, session)
+                    self._detach_pcm(conn)
                     conn = None
-                    session = None
                     continue
                 if not chunk:
                     LOGGER.info("PCM client disconnected")
-                    self._detach_pcm(conn, session)
+                    self._detach_pcm(conn)
                     conn = None
-                    session = None
                     continue
-                for text, is_final in session.feed(chunk):
+                if session is None:
+                    continue
+                try:
+                    events = session.feed(chunk)
+                except Exception as exc:
+                    self._modules.mark_stt_error(str(exc))
+                    LOGGER.exception("STT feed failed")
+                    continue
+                for text, is_final in events:
                     self._emit_stt(text, is_final)
         finally:
-            if conn is not None and session is not None:
-                self._detach_pcm(conn, session)
+            if conn is not None:
+                self._detach_pcm(conn)
             server.close()
 
-    def _detach_pcm(self, conn: socket.socket, session: _PcmSession) -> None:
+    def _detach_pcm(self, conn: socket.socket) -> None:
         with self._pcm_session_lock:
-            if self._pcm_session is session:
-                self._pcm_session = None
+            self._pcm_session = None
         _close_socket(conn)
 
     @staticmethod

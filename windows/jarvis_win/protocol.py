@@ -1,4 +1,8 @@
-"""JSON line protocol shared with the Pi edge service."""
+"""JSON line protocol shared with the Pi edge service.
+
+Control: hello, speak, stt_reset, health, reload_modules; responses ready, audio,
+health, reload_result, error; STT events partial/final.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""JSON line protocol shared with the Windows audio service."""
+"""JSON line protocol shared with the Windows audio service.
+
+Control channel (Pi -> Windows): hello, speak, stt_reset, health, reload_modules.
+Windows -> Pi: ready, partial, final, audio, health, reload_result, error.
+"""
 
 from __future__ import annotations
 

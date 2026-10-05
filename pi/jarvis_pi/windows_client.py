@@ -33,7 +33,8 @@ class WindowsClient:
         self._uplink_enabled.set()
         self._control_buffer = bytearray()
         self._control_lock = threading.Lock()
-        self._pending_audio: dict[str, queue.Queue[tuple[bytes, int]]] = {}
+        self._pending_audio: dict[str, queue.Queue[object]] = {}
+        self._pending_json: dict[str, queue.Queue[dict]] = {}
         self._on_message: MessageCallback | None = None
         self._reader_thread: threading.Thread | None = None
         self._reader_stop = threading.Event()
@@ -150,6 +151,63 @@ class WindowsClient:
             if self.reconnect(reason="stt_reset"):
                 self._send_control(message)
 
+    def request_health(self, timeout_sec: float = 15.0) -> dict:
+        return self._request_json_response(
+            "health",
+            "health",
+            {},
+            timeout_sec=timeout_sec,
+            reconnect_reason="health",
+        )
+
+    def request_reload(self, modules: list[str], timeout_sec: float = 120.0) -> dict:
+        return self._request_json_response(
+            "reload_modules",
+            "reload_result",
+            {"modules": modules},
+            timeout_sec=timeout_sec,
+            reconnect_reason="reload_modules",
+        )
+
+    def _request_json_response(
+        self,
+        request_type: str,
+        response_type: str,
+        payload: dict,
+        *,
+        timeout_sec: float,
+        reconnect_reason: str,
+    ) -> dict:
+        if not self._control_socket:
+            if not self.reconnect(reason=reconnect_reason):
+                raise RuntimeError("Control socket is not connected")
+
+        request_id = uuid.uuid4().hex
+        response_queue: queue.Queue[dict] = queue.Queue(maxsize=1)
+        with self._control_lock:
+            self._pending_json[request_id] = response_queue
+
+        message = encode_message({"type": request_type, "id": request_id, **payload})
+        try:
+            self._send_control(message)
+        except OSError:
+            if not self.reconnect(reason=f"{reconnect_reason} send"):
+                with self._control_lock:
+                    self._pending_json.pop(request_id, None)
+                raise
+            self._send_control(message)
+
+        try:
+            response = response_queue.get(timeout=timeout_sec)
+            if response.get("type") != response_type:
+                raise RuntimeError(f"Unexpected Windows response: {response}")
+            return response
+        except queue.Empty:
+            raise TimeoutError(f"Timed out waiting for {response_type}") from None
+        finally:
+            with self._control_lock:
+                self._pending_json.pop(request_id, None)
+
     def request_speak(self, text: str, timeout_sec: float = 120.0) -> tuple[bytes, int]:
         if not self._control_socket:
             if not self.reconnect(reason="request_speak"):
@@ -171,7 +229,12 @@ class WindowsClient:
             self._send_control(message)
 
         try:
-            return response_queue.get(timeout=timeout_sec)
+            result = response_queue.get(timeout=timeout_sec)
+            if isinstance(result, RuntimeError):
+                raise result
+            if not isinstance(result, tuple):
+                raise RuntimeError(f"Unexpected speak response: {result!r}")
+            return result
         finally:
             with self._control_lock:
                 self._pending_audio.pop(request_id, None)
@@ -195,8 +258,22 @@ class WindowsClient:
                 continue
 
             msg_type = message.get("type")
+            request_id = str(message.get("id", ""))
+            if msg_type in {"health", "reload_result"}:
+                pending_json = self._pending_json.get(request_id)
+                if pending_json is not None:
+                    pending_json.put(message)
+                continue
+
+            if msg_type == "error" and request_id:
+                pending_audio = self._pending_audio.get(request_id)
+                if pending_audio is not None:
+                    code = str(message.get("code", "error"))
+                    detail = str(message.get("message", code))
+                    pending_audio.put(RuntimeError(f"{code}: {detail}"))
+                    continue
+
             if msg_type == "audio":
-                request_id = str(message.get("id", ""))
                 header = AudioHeader.from_dict(message)
                 try:
                     audio = self._read_exact(sock, header.nbytes)

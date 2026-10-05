@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import wave
 from pathlib import Path
+
+
+def default_synth_timeout_sec() -> float:
+    return float(os.getenv("PIPER_SYNTH_TIMEOUT_SEC", "120"))
 
 
 def synthesize_pcm(
@@ -13,6 +18,8 @@ def synthesize_pcm(
     piper_bin: Path,
     model_path: Path,
     config_path: Path | None,
+    *,
+    timeout: float | None = None,
 ) -> tuple[bytes, int]:
     text = text.strip()
     if not text:
@@ -26,12 +33,14 @@ def synthesize_pcm(
         command.extend(["--config", str(config_path)])
 
     try:
+        run_timeout = timeout if timeout is not None else default_synth_timeout_sec()
         subprocess.run(
             command,
             input=text.encode("utf-8"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
+            timeout=run_timeout,
         )
         with wave.open(str(wav_path), "rb") as wav_file:
             if wav_file.getsampwidth() != 2:
