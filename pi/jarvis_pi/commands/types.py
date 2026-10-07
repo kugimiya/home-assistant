@@ -13,3 +13,4 @@ class CommandExecutionResult:
     reply: str
     spoken_during_handle: bool = False
     end_session: bool = False
+    await_followup: bool = False

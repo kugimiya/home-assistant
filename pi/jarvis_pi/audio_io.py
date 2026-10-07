@@ -98,3 +98,32 @@ def play_wav(device: str, path: Path) -> None:
         ["aplay", "-q", "-D", device, str(path)],
         check=True,
     )
+
+
+def play_wav_until_stopped(device: str, path: Path, stop: threading.Event) -> bool:
+    """Play one WAV file; return False if *stop* was set before playback finished."""
+    if stop.is_set():
+        return False
+    if not path.is_file():
+        LOGGER.error("Sound file missing: %s", path)
+        return False
+    proc = subprocess.Popen(
+        ["aplay", "-q", "-D", device, str(path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        while proc.poll() is None:
+            if stop.wait(timeout=0.05):
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=1)
+                return False
+        return proc.returncode == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=1)

@@ -9,11 +9,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from jarvis_pi.audio_io import PcmCapture, play_pcm, play_wav
+from jarvis_pi.aec import build_echo_canceller
+from jarvis_pi.audio_engine import AudioEngine
+from jarvis_pi.barge_in import BargeInDetector
 from jarvis_pi.commands import think
+from jarvis_pi.commands import timer as timer_commands
 from jarvis_pi.config import load_config
 from jarvis_pi.memory import get_memory_manager
-from jarvis_pi.sounds_paths import accept_wav, decline_wav, networking_wav
+from jarvis_pi.resample import resample_s16_mono
+from jarvis_pi.sounds_paths import accept_wav, decline_wav, networking_wav, timer_wav
+from jarvis_pi.timer_service import TimerService
 from jarvis_pi.wake import WakeStateMachine, normalize_text
 from jarvis_pi.windows_client import WindowsClient
 
@@ -74,7 +79,8 @@ def main() -> None:
 
     wake_machine = WakeStateMachine(config.wake_words, config.command_window_sec)
     state_lock = threading.Lock()
-    capture = PcmCapture(config.arecord_device, config.sample_rate)
+    speaking = False
+    barge_abort = False
     action_queue: queue.Queue[str] = queue.Queue()
     stt_suppress_until = 0.0
     pending_command: str | None = None
@@ -168,31 +174,55 @@ def main() -> None:
         client.uplink_enabled.set()
         stt_suppress_until = time.monotonic() + STT_POST_TTS_GRACE_SEC
 
-    def play_local_wav(path: Path, *, reset_wake: bool = True) -> None:
+    def play_local_wav(path: Path, *, reset_wake: bool = True, mute_uplink: bool = True) -> None:
         if not path.is_file():
             LOGGER.error("Sound file missing: %s", path)
             return
         LOGGER.info("Local WAV -> %s", path.name)
-        _playback_guard(reset_wake=reset_wake)
+        if mute_uplink:
+            _playback_guard(reset_wake=reset_wake)
+        elif reset_wake:
+            with state_lock:
+                wake_machine.reset()
         try:
-            play_wav(config.aplay_device, path)
+            audio_engine.play_wav(path)
             LOGGER.info("Local WAV playback done")
         finally:
-            _playback_release()
+            if mute_uplink:
+                _playback_release()
 
-    def speak(text: str, *, reset_wake: bool = True) -> None:
+    def speak(text: str, *, duplex: bool = True) -> bool:
+        """Speak text. Return False when barge-in interrupted playback."""
+        nonlocal speaking
         text = text.strip()
         if not text:
-            return
+            return True
         LOGGER.info("TTS -> %s", _preview(text))
-        _playback_guard(reset_wake=reset_wake)
+        audio, sample_rate = client.request_speak(text)
+        pcm = resample_s16_mono(audio, sample_rate, 16000)
+        LOGGER.info("TTS received %d bytes @ %d Hz", len(audio), sample_rate)
+        if duplex:
+            speaking = True
+            barge_in.set_enabled(True)
+            try:
+                finished = audio_engine.play_pcm(pcm, text=text)
+            finally:
+                barge_in.set_enabled(False)
+                speaking = False
+            LOGGER.info("TTS playback done (finished=%s)", finished)
+            return finished
+        _playback_guard(reset_wake=True)
         try:
-            audio, sample_rate = client.request_speak(text)
-            LOGGER.info("TTS received %d bytes @ %d Hz, playing...", len(audio), sample_rate)
-            play_pcm(config.aplay_device, audio, sample_rate)
-            LOGGER.info("TTS playback done")
+            audio_engine.play_pcm(pcm, text=text)
         finally:
             _playback_release()
+        return True
+
+    def finish_barge_in() -> None:
+        LOGGER.info("Barge-in -> accept.wav")
+        play_local_wav(accept_wav(), reset_wake=False)
+        with state_lock:
+            wake_machine.arm_listening()
 
     def relisten_after_command() -> None:
         time.sleep(POST_COMMAND_RELISTEN_DELAY_SEC)
@@ -205,20 +235,33 @@ def main() -> None:
         LOGGER.info("User request: %s", _preview(command_text))
 
         def stream_sentence(sentence: str) -> None:
+            nonlocal barge_abort
+            if barge_abort:
+                return
             LOGGER.info("Agent stream sentence: %s", _preview(sentence))
-            speak(sentence)
+            if not speak(sentence):
+                barge_abort = True
 
         LOGGER.info("DeepSeek request -> networking.wav")
         play_local_wav(networking_wav())
+        barge_abort = False
         result = think.handle(command_text, stream_sentence)
         LOGGER.info("Agent reply: %s", _preview(result.reply))
+        if barge_abort:
+            finish_barge_in()
+            return
         if result.end_session:
             LOGGER.info("Decline tool -> decline.wav")
             play_local_wav(decline_wav())
             return
         if not result.spoken_during_handle:
-            speak(result.reply)
-        relisten_after_command()
+            if not speak(result.reply):
+                finish_barge_in()
+                return
+        if result.await_followup:
+            relisten_after_command()
+        else:
+            LOGGER.info("Task complete — not arming follow-up listen (wake phrase required)")
 
     def worker_loop() -> None:
         while True:
@@ -229,14 +272,14 @@ def main() -> None:
             elif action == "__timeout__":
                 LOGGER.info("Command window timed out -> decline.wav")
                 play_local_wav(decline_wav())
+            elif action == "__timer_dismiss__":
+                LOGGER.info("Timer dismissed via wake -> decline.wav")
+                play_local_wav(decline_wav())
             else:
                 LOGGER.info("Processing command: %s", _preview(action))
                 on_command(action)
 
     def handle_stt_message(message: dict) -> None:
-        if time.monotonic() < stt_suppress_until:
-            return
-
         msg_type = message.get("type")
         if msg_type in {"hello", "ready", "audio", "health", "reload_result"}:
             return
@@ -249,6 +292,23 @@ def main() -> None:
         if not text:
             return
         is_final = msg_type == "final"
+
+        if speaking:
+            barge_in.consider(text, is_final=is_final)
+            return
+
+        if timer_service.is_ringing():
+            if timer_service.wake_dismisses_ring(text, is_final=is_final):
+                LOGGER.info("Wake during timer ring -> stop alarm")
+                timer_service.stop_ringing()
+                cancel_pending_command()
+                with state_lock:
+                    wake_machine.reset()
+                action_queue.put("__timer_dismiss__")
+            return
+
+        if time.monotonic() < stt_suppress_until:
+            return
         if is_final:
             LOGGER.info("STT final: %s", _preview(text))
             timestamp = datetime.now().strftime("%y.%m.%d %H:%M:%S")
@@ -282,11 +342,37 @@ def main() -> None:
             time.sleep(interval)
             ensure_windows_modules(client)
 
+    def on_barge_trigger() -> None:
+        nonlocal barge_abort
+        barge_abort = True
+        audio_engine.stop_playback()
+        client.send_stt_reset()
+
+    timer_service = TimerService(
+        aplay_device=config.aplay_device,
+        timer_sound=timer_wav(),
+        wake_words=config.wake_words,
+    )
+    audio_engine = AudioEngine(
+        input_device=config.arecord_device,
+        output_device=config.aplay_device,
+        canceller=build_echo_canceller(),
+        uplink_write=client.pcm_write_sink().write,
+    )
+    barge_in = BargeInDetector(
+        wake_words=config.wake_words,
+        timeline=audio_engine.timeline,
+        on_trigger=on_barge_trigger,
+    )
+    audio_engine.on_clean_frame = barge_in.feed
+    timer_service.engine = audio_engine
+    timer_commands.configure(timer_service)
+
     threading.Thread(target=worker_loop, daemon=True).start()
     client.start_control_reader(handle_stt_message)
     ensure_windows_modules(client)
     threading.Thread(target=health_monitor_loop, daemon=True).start()
-    capture.start(client.pcm_write_sink())
+    audio_engine.start()
 
     LOGGER.info("Wake words: %s", ", ".join(config.wake_words))
     LOGGER.info("Connected to Windows %s", config.windows_host)
@@ -305,7 +391,7 @@ def main() -> None:
     finally:
         cancel_pending_command()
         get_memory_manager().shutdown()
-        capture.stop()
+        audio_engine.stop()
         client.close()
 
 

@@ -53,12 +53,9 @@ PYTHONPATH=. python -m jarvis_pi
 
 Wake-фразы по умолчанию: `компьютер`, `джарвис`, `прослушка` (`WAKE_WORDS` в `.env`).
 
-Таймеры через tool `set_timer` используют `at`/`atd` на Pi:
+Во время ответа TTS микрофон остаётся включённым (AEC по reference из колонки). Wake-фразу по-прежнему распознаёт Windows STT: она прерывает озвучку, играет `accept.wav` и открывает окно команды. На Pi отдельная модель Vosk не нужна. `AEC_BACKEND=off` отключает WebRTC AEC. Задержку эха задаёт `AEC_STREAM_DELAY_MS`.
 
-```bash
-sudo apt install at
-sudo systemctl enable --now atd
-```
+Таймеры через tool `set_timer` ставятся внутри `jarvis-pi`: после срабатывания звук `timer.wav` крутится до `TIMER_RING_DURATION_SEC` (по умолчанию 5 минут); wake-фраза останавливает звонок и проигрывает `decline.wav` без приёма команды.
 
 Автозапуск при загрузке и перезапуск после падения (user systemd + linger). Перед стартом USB-карта из `ARECORD_DEVICE` становится дефолтной; микрофон 45%, выход 25% (`MIC_BOOT_PERCENT`, `SPEAKER_BOOT_PERCENT` в `.env`):
 

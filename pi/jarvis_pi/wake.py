@@ -13,19 +13,41 @@ def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
 
+def _sorted_wake_words(wake_words: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            (normalize_text(word) for word in wake_words if word),
+            key=len,
+            reverse=True,
+        )
+    )
+
+
+def find_wake_phrase(text: str, wake_words: tuple[str, ...]) -> tuple[str | None, str]:
+    """Return matched wake word and remainder after it (both normalized)."""
+    normalized = normalize_text(text)
+    if not normalized:
+        return None, ""
+    for word in _sorted_wake_words(wake_words):
+        index = normalized.find(word)
+        if index != -1:
+            remainder = normalized[index + len(word) :].strip()
+            return word, remainder
+    return None, ""
+
+
+def text_contains_wake_word(text: str, wake_words: tuple[str, ...]) -> bool:
+    wake_word, _ = find_wake_phrase(text, wake_words)
+    return wake_word is not None
+
+
 @dataclass
 class WakeStateMachine:
     wake_words: tuple[str, ...]
     command_window_sec: float
 
     def __post_init__(self) -> None:
-        self._wake_words = tuple(
-            sorted(
-                (normalize_text(word) for word in self.wake_words if word),
-                key=len,
-                reverse=True,
-            )
-        )
+        self._wake_words = _sorted_wake_words(self.wake_words)
         self._awake = False
         self._awake_since = 0.0
 
@@ -39,12 +61,9 @@ class WakeStateMachine:
         self._awake_since = time.time()
 
     def _find_wake(self, normalized: str) -> tuple[str | None, str]:
-        matched = [word for word in self._wake_words if word in normalized]
-        if not matched:
+        wake_word, remainder = find_wake_phrase(normalized, self.wake_words)
+        if wake_word is None:
             return None, ""
-        wake_word = max(matched, key=len)
-        index = normalized.find(wake_word)
-        remainder = normalized[index + len(wake_word) :].strip()
         return wake_word, remainder
 
     def _is_timed_out(self) -> bool:

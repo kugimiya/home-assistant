@@ -34,6 +34,9 @@ def _clear_turns() -> None:
 
 
 get_memory_manager().set_clear_turns_callback(_clear_turns)
+_FOLLOWUP_MARKER = "[[AWAIT_USER]]"
+_DONE_MARKER = "[[DONE]]"
+
 _ABBREVIATION_TAILS = (
     "т.д.",
     "т.п.",
@@ -224,7 +227,9 @@ def _build_instructions(last_user_text: str = "") -> str:
         "Для погоды вызывай инструмент get_weather. "
         "Для свежих фактов из интернета вызывай web_search — не отказывайся от поиска, "
         "если пользователь просит найти или узнать актуальное. "
-        "Для таймеров вызывай set_timer (длительность в секундах). "
+        "Для таймеров вызывай set_timer (длительность в секундах); "
+        "после срабатывания звук идёт несколько минут, пользователь может "
+        "остановить wake-фразой. "
         "Для громкости колонки вызывай set_speaker_volume, для микрофона set_mic_volume "
         "(целое число процентов от 0 до 100). "
         "Для арифметики, процентов и «сколько до …» вызывай run_python — не считай в уме, "
@@ -234,9 +239,39 @@ def _build_instructions(last_user_text: str = "") -> str:
         "Профиль: get_profile. Что сохранено в памяти целиком (факты и эпизоды): list_memory. "
         "Отдельно последние эпизоды: get_recent_episodes. "
         "Если пользователь хочет завершить разговор (спи, выключись, всё) — вызывай decline, "
-        "без прощальной речи в ответе."
+        "без прощальной речи в ответе. "
+        "После ответа колонка по умолчанию снова ждёт wake-фразу. "
+        "Если без ответа пользователя нельзя продолжить — ты что-то не понял, нужно уточнение, "
+        "задаёшь вопрос или просишь повторить — в самом конце текста добавь маркер "
+        f"{_FOLLOWUP_MARKER} (его не озвучивай). "
+        "Если задача выполнена (таймер, погода, поиск, громкость, расчёт, факт из памяти) "
+        f"и уточнений не нужно — маркер не добавляй или добавь {_DONE_MARKER}."
         f"{memory_section}"
     )
+
+
+def _strip_followup_markers(text: str) -> str:
+    cleaned = text.replace(_FOLLOWUP_MARKER, "").replace(_DONE_MARKER, "")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _followup_from_markers(raw_text: str) -> bool | None:
+    if _FOLLOWUP_MARKER in raw_text:
+        return True
+    if _DONE_MARKER in raw_text:
+        return False
+    return None
+
+
+def _implicit_await_followup(reply: str) -> bool:
+    lowered = reply.strip().lower()
+    if not lowered:
+        return False
+    if "повтори" in lowered and ("не расслыш" in lowered or "уточн" in lowered):
+        return True
+    if lowered.endswith("?"):
+        return True
+    return False
 
 
 def _strip_markdown_for_tts(text: str) -> str:
@@ -516,10 +551,32 @@ def _post_responses(
         return final_response, full_text, has_function_calls
 
 
+def _finalize_reply(
+    raw_text: str,
+    *,
+    spoken_during_handle: bool = False,
+) -> CommandExecutionResult:
+    marker_hint = _followup_from_markers(raw_text)
+    stripped = _strip_followup_markers(raw_text)
+    sanitized = _strip_markdown_for_tts(stripped) or stripped
+    if marker_hint is not None:
+        await_followup = marker_hint
+    else:
+        await_followup = _implicit_await_followup(sanitized)
+    return CommandExecutionResult(
+        reply=sanitized,
+        spoken_during_handle=spoken_during_handle,
+        await_followup=await_followup,
+    )
+
+
 def handle(payload: str, stream_callback: StreamCallback | None = None) -> CommandExecutionResult:
     prompt = payload.strip()
     if not prompt:
-        return CommandExecutionResult(reply="Не расслышала запрос, повтори.")
+        return CommandExecutionResult(
+            reply="Не расслышала запрос, повтори.",
+            await_followup=True,
+        )
 
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
@@ -575,7 +632,8 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
                     return CommandExecutionResult(reply="", end_session=True)
                 continue
 
-            sanitized_full_text = _strip_markdown_for_tts(full_text) or full_text
+            speak_text = _strip_followup_markers(full_text)
+            sanitized_full_text = _strip_markdown_for_tts(speak_text) or speak_text
             if not sanitized_full_text:
                 return CommandExecutionResult(reply="DeepSeek вернул пустой ответ.")
 
@@ -584,12 +642,9 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
             memory.record_exchange(prompt, sanitized_full_text)
             memory.touch_interaction()
             if stream_callback is not None:
-                _speak_full_text(full_text, stream_callback)
+                _speak_full_text(speak_text, stream_callback)
                 spoken_during_handle = True
-            return CommandExecutionResult(
-                reply=sanitized_full_text,
-                spoken_during_handle=spoken_during_handle,
-            )
+            return _finalize_reply(full_text, spoken_during_handle=spoken_during_handle)
 
         return CommandExecutionResult(reply="Слишком много шагов с инструментами, попробуй проще.")
     except HTTPError as exc:
