@@ -27,6 +27,7 @@ from jarvis_pi.personality import (
 from jarvis_pi.personality.overlay import render_overlay_block
 from jarvis_pi.personality.tools import SELF_RESPONSES_TOOLS, execute_self_tool
 
+from . import home as home_tool
 from . import python_runner
 from . import timer as timer_tool
 from . import volume as volume_tool
@@ -157,6 +158,57 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
     },
     {
         "type": "function",
+        "name": "get_home",
+        "description": (
+            "Список устройств умного дома и их состояние: свет, розетки, зоны. "
+            "Вызывай перед ответом, что включено, и если не уверен в имени устройства."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Необязательно: зона или устройство, чтобы сузить список.",
+                }
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "control_home",
+        "description": (
+            "Включить, выключить или переключить устройство или всю зону в умном доме. "
+            "target — имя устройства или зоны, как его сказал пользователь "
+            "(«зал 2», «свет в зале»). Яркость и цвет только если пользователь просит."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Устройство, зона или «свет».",
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["turn_on", "turn_off", "toggle"],
+                    "description": "turn_on включить, turn_off выключить, toggle переключить.",
+                },
+                "brightness_pct": {
+                    "type": "integer",
+                    "description": "Яркость 0–100, только если пользователь назвал уровень.",
+                },
+                "color_temp_kelvin": {
+                    "type": "integer",
+                    "description": "Цветовая температура в кельвинах, только если пользователь просит теплее или холоднее.",
+                },
+            },
+            "required": ["target", "action"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "run_python",
         "description": (
             "Выполнить короткий Python для точных вычислений: проценты, деление, "
@@ -248,6 +300,9 @@ def _build_instructions(last_user_text: str = "", *, user_affect_text: str = "")
         "остановить wake-фразой. "
         "Для громкости колонки вызывай set_speaker_volume, для микрофона set_mic_volume "
         "(целое число процентов от 0 до 100). "
+        "Для умного дома вызывай get_home, чтобы узнать состояние, и control_home, "
+        "чтобы включить, выключить или переключить свет и другие устройства. "
+        "В target передавай слова пользователя («зал 2», «свет в зале»), не выдумывай entity_id. "
         "Для арифметики, процентов и «сколько до …» вызывай run_python — не считай в уме, "
         "пиши код с print() и озвучь результат своими словами. "
         "Для воспоминаний о пользователе и прошлых разговорах вызывай search_memory; "
@@ -264,7 +319,7 @@ def _build_instructions(last_user_text: str = "", *, user_affect_text: str = "")
         "Если без ответа пользователя нельзя продолжить — ты что-то не понял, нужно уточнение, "
         "задаёшь вопрос или просишь повторить — в самом конце текста добавь маркер "
         f"{_FOLLOWUP_MARKER} (его не озвучивай). "
-        "Если задача выполнена (таймер, погода, поиск, громкость, расчёт, факт из памяти) "
+        "Если задача выполнена (таймер, погода, поиск, громкость, свет, расчёт, факт из памяти) "
         f"и уточнений не нужно — маркер не добавляй или добавь {_DONE_MARKER}. "
         f"{IDENTITY_INSTRUCTIONS} "
         f"{render_style_card(classify(user_affect_text or last_user_text))}"
@@ -373,6 +428,15 @@ def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
         return volume_tool.set_speaker_volume(args.get("percent")), False
     if name == "set_mic_volume":
         return volume_tool.set_mic_volume(args.get("percent")), False
+    if name == "get_home":
+        return home_tool.get_home(str(args.get("target", ""))), False
+    if name == "control_home":
+        return home_tool.control_home(
+            args.get("target"),
+            args.get("action"),
+            args.get("brightness_pct"),
+            args.get("color_temp_kelvin"),
+        ), False
     if name == "run_python":
         code = str(args.get("code", ""))
         return python_runner.run_python(code), False

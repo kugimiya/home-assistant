@@ -55,9 +55,11 @@ Wake-фразы по умолчанию: `компьютер`, `джарвис`,
 
 Во время ответа TTS микрофон остаётся включённым (AEC по reference из колонки). Wake-фразу по-прежнему распознаёт Windows STT: она прерывает озвучку, играет `accept.wav` и открывает окно команды. На Pi отдельная модель Vosk не нужна. `AEC_BACKEND=off` отключает WebRTC AEC. Задержку эха задаёт `AEC_STREAM_DELAY_MS`.
 
+Свет и другие устройства Home Assistant — tools `get_home` и `control_home`. Адрес и долгоживущий токен: `HA_URL` и `HA_TOKEN` в `pi/.env`.
+
 Таймеры через tool `set_timer` ставятся внутри `jarvis-pi`: после срабатывания звук `timer.wav` крутится до `TIMER_RING_DURATION_SEC` (по умолчанию 5 минут); wake-фраза останавливает звонок и проигрывает `decline.wav` без приёма команды.
 
-Автозапуск при загрузке и перезапуск после падения (user systemd + linger). Перед стартом USB-карта из `ARECORD_DEVICE` становится дефолтной; микрофон 45%, выход 25% (`MIC_BOOT_PERCENT`, `SPEAKER_BOOT_PERCENT` в `.env`):
+Автозапуск при загрузке и перезапуск после падения (user systemd + linger). Перед стартом USB-карта из `ARECORD_DEVICE` становится дефолтной; микрофон 45%, выход 50% (`MIC_BOOT_PERCENT`, `SPEAKER_BOOT_PERCENT` в `.env`):
 
 ```bash
 cd pi
