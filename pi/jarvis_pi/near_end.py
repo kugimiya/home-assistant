@@ -30,8 +30,5 @@ class NearEndSpeechGate:
     def allows(self, near_pcm: bytes, far_pcm: bytes) -> bool:
         near = pcm_rms(near_pcm)
         far = pcm_rms(far_pcm)
-        if near < self.threshold:
-            return False
-        if far <= 1.0:
-            return True
-        return near >= far * self.ratio
+        del far
+        return near >= self.threshold

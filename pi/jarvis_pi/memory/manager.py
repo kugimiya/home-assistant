@@ -18,6 +18,7 @@ from jarvis_pi.memory.models import SearchHit, SessionSummaryResult
 from jarvis_pi.memory.summarizer import summarize_session
 from jarvis_pi.memory.temporal import TemporalLayer
 from jarvis_pi.memory.truth_log import append_record
+from jarvis_pi.personality.state import on_session_end
 
 LOGGER = logging.getLogger("jarvis_pi.memory")
 
@@ -118,6 +119,7 @@ class MemoryManager:
         self._session_messages = []
         if self._clear_turns:
             self._clear_turns()
+        on_session_end()
 
         if not session_id:
             return
@@ -465,6 +467,120 @@ class MemoryManager:
             }
             for row in rows
         ]
+
+    def get_fact(self, fact_id: int) -> dict[str, object] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT id, fact_text, source, confidence, tags, created_at
+                FROM facts WHERE id = ?
+                """,
+                (fact_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "fact_text": row["fact_text"],
+            "source": row["source"],
+            "confidence": row["confidence"],
+            "tags": row["tags"],
+            "created_at": row["created_at"],
+        }
+
+    def update_fact(
+        self,
+        fact_id: int,
+        fact: str,
+        *,
+        source: str | None = None,
+        confidence: str | None = None,
+        tags: list[str] | None = None,
+    ) -> bool:
+        text = fact.strip()
+        if not text:
+            return False
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT source, confidence, tags FROM facts WHERE id = ?",
+                (fact_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            with self._conn:
+                self._conn.execute(
+                    """
+                    UPDATE facts
+                    SET fact_text = ?, fact_norm = ?, source = ?, confidence = ?, tags = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        text,
+                        _normalize_fact(text),
+                        source if source is not None else row["source"],
+                        confidence if confidence is not None else row["confidence"],
+                        _tags_json(tags) if tags is not None else row["tags"],
+                        fact_id,
+                    ),
+                )
+        return True
+
+    def delete_fact(self, fact_id: int) -> bool:
+        with self._lock:
+            with self._conn:
+                cur = self._conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+            return cur.rowcount > 0
+
+    def upsert_trait(self, trait: str, value: str, confidence: float = 0.9) -> None:
+        with self._lock:
+            with self._conn:
+                self._upsert_trait_row(trait, value, confidence, conn=self._conn, write_log=True)
+
+    def delete_trait(self, trait: str) -> bool:
+        with self._lock:
+            with self._conn:
+                cur = self._conn.execute(
+                    "DELETE FROM user_traits WHERE trait = ?",
+                    (trait.strip(),),
+                )
+            return cur.rowcount > 0
+
+    def update_episode(self, episode_id: int, summary: str) -> bool:
+        text = summary.strip()
+        if not text:
+            return False
+        with self._lock:
+            with self._conn:
+                cur = self._conn.execute(
+                    "UPDATE episodes SET summary = ? WHERE id = ?",
+                    (text, episode_id),
+                )
+            return cur.rowcount > 0
+
+    def delete_episode(self, episode_id: int) -> bool:
+        with self._lock:
+            with self._conn:
+                cur = self._conn.execute("DELETE FROM episodes WHERE id = ?", (episode_id,))
+            return cur.rowcount > 0
+
+    def get_episode(self, episode_id: int) -> dict[str, object] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT id, summary, tags, importance, created_at
+                FROM episodes WHERE id = ?
+                """,
+                (episode_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "summary": row["summary"],
+            "tags": row["tags"],
+            "importance": row["importance"],
+            "created_at": row["created_at"],
+        }
 
     def memory_inventory(
         self,

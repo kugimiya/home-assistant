@@ -65,7 +65,7 @@ class BargeInDetector:
 
     def consider(self, text: str, *, is_final: bool) -> bool:
         """Return True when this STT text should interrupt TTS."""
-        if not self._enabled.is_set() or self._fired or not is_final:
+        if not self._enabled.is_set() or self._fired:
             return False
         wake_word, _remainder = find_wake_phrase(text, self.wake_words)
         if not wake_word:

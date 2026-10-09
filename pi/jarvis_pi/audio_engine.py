@@ -173,13 +173,35 @@ class AudioEngine:
         return chunk
 
 
+def _s24le_to_s16(raw: bytes) -> bytes:
+    import numpy as np
+
+    usable = len(raw) - (len(raw) % 3)
+    if usable <= 0:
+        return b""
+    packed = np.frombuffer(raw[:usable], dtype=np.uint8).reshape(-1, 3)
+    values = (
+        packed[:, 0].astype(np.int32)
+        | (packed[:, 1].astype(np.int32) << 8)
+        | (packed[:, 2].astype(np.int32) << 16)
+    )
+    values = np.where(values & 0x800000, values - 0x1000000, values)
+    return (values >> 8).astype(np.int16).tobytes()
+
+
 def _read_wav_pcm(path: Path) -> tuple[bytes, int]:
     with wave.open(str(path), "rb") as wav:
         rate = wav.getframerate()
         channels = wav.getnchannels()
         width = wav.getsampwidth()
         raw = wav.readframes(wav.getnframes())
-    if width != 2:
+    if width == 3:
+        raw = _s24le_to_s16(raw)
+    elif width == 4:
+        import numpy as np
+
+        raw = (np.frombuffer(raw, dtype=np.int32) >> 16).astype(np.int16).tobytes()
+    elif width != 2:
         raise ValueError(f"unsupported wav width {width} in {path}")
     if channels == 2:
         import numpy as np

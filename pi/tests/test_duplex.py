@@ -29,7 +29,7 @@ def test_barge_in_uses_remote_text_not_local_model() -> None:
     )
     detector.set_enabled(True)
     detector._near_until = time.monotonic() + 5
-    assert detector.consider("компьютер", is_final=True)
+    assert detector.consider("компьютер", is_final=False)
     assert hits == ["go"]
     timeline.note("это компьютер", 5.0, now=time.monotonic())
     detector.set_enabled(True)

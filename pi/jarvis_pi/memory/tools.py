@@ -227,3 +227,136 @@ def execute_memory_tool(name: str, args: dict[str, object]) -> str:
         return "\n".join(lines)
 
     return f"Неизвестная функция памяти: {name}"
+
+
+def execute_memory_crud(args: dict[str, object]) -> str:
+    """Create, read, update, or delete a fact, trait, or episode."""
+    mgr = get_memory_manager()
+    entity = str(args.get("entity", "")).strip().lower()
+    action = str(args.get("action", "")).strip().lower()
+    if entity not in ("fact", "trait", "episode"):
+        return "Ошибка: entity должен быть fact, trait или episode."
+    if action not in ("create", "read", "update", "delete"):
+        return "Ошибка: action должен быть create, read, update или delete."
+
+    if entity == "fact":
+        if action == "create":
+            text = str(args.get("text", "")).strip()
+            if not text:
+                return "Ошибка: пустой факт."
+            fact_id = mgr.add_fact(
+                text,
+                source=str(args.get("source", "model_inferred") or "model_inferred"),
+                confidence=str(args.get("confidence", "INFERRED") or "INFERRED"),
+            )
+            return f"Факт создан (id={fact_id})."
+        fact_id = _as_int(args.get("id"))
+        if fact_id is None:
+            return "Ошибка: нужен id факта."
+        if action == "read":
+            row = mgr.get_fact(fact_id)
+            if row is None:
+                return f"Факт id={fact_id} не найден."
+            return json.dumps(row, ensure_ascii=False)
+        if action == "update":
+            text = str(args.get("text", "")).strip()
+            if not mgr.update_fact(fact_id, text):
+                return f"Факт id={fact_id} не обновлён."
+            return f"Факт id={fact_id} обновлён."
+        if mgr.delete_fact(fact_id):
+            return f"Факт id={fact_id} удалён."
+        return f"Факт id={fact_id} не найден."
+
+    if entity == "trait":
+        trait = str(args.get("trait", "")).strip()
+        if not trait:
+            return "Ошибка: нужен trait."
+        if action == "read":
+            profile = mgr.get_profile()
+            match = [row for row in profile if str(row.get("trait")) == trait]
+            if not match:
+                return f"Черта {trait!r} не найдена."
+            return json.dumps(match[0], ensure_ascii=False)
+        if action == "delete":
+            if mgr.delete_trait(trait):
+                return f"Черта {trait!r} удалена."
+            return f"Черта {trait!r} не найдена."
+        value = str(args.get("text", "")).strip()
+        if not value:
+            return "Ошибка: пустое значение черты."
+        confidence = 0.9
+        try:
+            if args.get("confidence") is not None:
+                confidence = float(args["confidence"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            confidence = 0.9
+        mgr.upsert_trait(trait, value, max(0.0, min(1.0, confidence)))
+        verb = "создана" if action == "create" else "обновлена"
+        return f"Черта {trait!r} {verb}."
+
+    episode_id = _as_int(args.get("id"))
+    if action == "create":
+        return "Ошибка: эпизоды создаёт саммари сессии, не эта тула."
+    if episode_id is None:
+        return "Ошибка: нужен id эпизода."
+    if action == "read":
+        row = mgr.get_episode(episode_id)
+        if row is None:
+            return f"Эпизод id={episode_id} не найден."
+        return json.dumps(row, ensure_ascii=False)
+    if action == "update":
+        text = str(args.get("text", "")).strip()
+        if not mgr.update_episode(episode_id, text):
+            return f"Эпизод id={episode_id} не обновлён."
+        return f"Эпизод id={episode_id} обновлён."
+    if mgr.delete_episode(episode_id):
+        return f"Эпизод id={episode_id} удалён."
+    return f"Эпизод id={episode_id} не найден."
+
+
+def _as_int(value: object) -> int | None:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+MEMORY_CRUD_TOOL: dict[str, object] = {
+    "type": "function",
+    "name": "memory_crud",
+    "description": (
+        "Создать, прочитать, изменить или удалить запись памяти: факт, черту профиля "
+        "или эпизод диалога. Для эпизода create недоступен."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "entity": {
+                "type": "string",
+                "enum": ["fact", "trait", "episode"],
+            },
+            "action": {
+                "type": "string",
+                "enum": ["create", "read", "update", "delete"],
+            },
+            "id": {
+                "type": "integer",
+                "description": "id факта или эпизода.",
+            },
+            "trait": {
+                "type": "string",
+                "description": "Ключ черты профиля.",
+            },
+            "text": {
+                "type": "string",
+                "description": "Текст факта, значение черты или саммари эпизода.",
+            },
+            "confidence": {
+                "type": "string",
+                "description": "Для факта: EXTRACTED, INFERRED, AMBIGUOUS. Для черты: число 0–1.",
+            },
+        },
+        "required": ["entity", "action"],
+        "additionalProperties": False,
+    },
+}

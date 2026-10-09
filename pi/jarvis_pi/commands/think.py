@@ -11,7 +11,21 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from jarvis_pi.config import load_config
-from jarvis_pi.memory import MEMORY_RESPONSES_TOOLS, execute_memory_tool, get_memory_manager
+from jarvis_pi.memory import (
+    MEMORY_CRUD_TOOL,
+    MEMORY_RESPONSES_TOOLS,
+    execute_memory_crud,
+    execute_memory_tool,
+    get_memory_manager,
+)
+from jarvis_pi.personality import (
+    IDENTITY_INSTRUCTIONS,
+    classify,
+    note_user_affect,
+    render_style_card,
+)
+from jarvis_pi.personality.overlay import render_overlay_block
+from jarvis_pi.personality.tools import SELF_RESPONSES_TOOLS, execute_self_tool
 
 from . import python_runner
 from . import timer as timer_tool
@@ -174,6 +188,8 @@ _RESPONSES_TOOLS: list[dict[str, object]] = [
         },
     },
     *MEMORY_RESPONSES_TOOLS,
+    MEMORY_CRUD_TOOL,
+    *SELF_RESPONSES_TOOLS,
 ]
 
 
@@ -202,7 +218,7 @@ def _reasoning_body() -> dict[str, str]:
     return {"effort": effort}
 
 
-def _build_instructions(last_user_text: str = "") -> str:
+def _build_instructions(last_user_text: str = "", *, user_affect_text: str = "") -> str:
     config = load_config()
     try:
         now = datetime.now(ZoneInfo(config.location_tz))
@@ -238,6 +254,10 @@ def _build_instructions(last_user_text: str = "") -> str:
         "если пользователь просит запомнить факт — add_memory (confidence EXTRACTED для явных фраз). "
         "Профиль: get_profile. Что сохранено в памяти целиком (факты и эпизоды): list_memory. "
         "Отдельно последние эпизоды: get_recent_episodes. "
+        "Чтобы создать, изменить или удалить факт, черту или эпизод — memory_crud. "
+        "Чтобы переписать свой характер или добавку к инструкциям — rewrite_self. "
+        "Чтобы сбросить только эти самоправки к заводскому характеру — reset_self "
+        "(память пользователя при этом остаётся). "
         "Если пользователь хочет завершить разговор (спи, выключись, всё) — вызывай decline, "
         "без прощальной речи в ответе. "
         "После ответа колонка по умолчанию снова ждёт wake-фразу. "
@@ -245,7 +265,10 @@ def _build_instructions(last_user_text: str = "") -> str:
         "задаёшь вопрос или просишь повторить — в самом конце текста добавь маркер "
         f"{_FOLLOWUP_MARKER} (его не озвучивай). "
         "Если задача выполнена (таймер, погода, поиск, громкость, расчёт, факт из памяти) "
-        f"и уточнений не нужно — маркер не добавляй или добавь {_DONE_MARKER}."
+        f"и уточнений не нужно — маркер не добавляй или добавь {_DONE_MARKER}. "
+        f"{IDENTITY_INSTRUCTIONS} "
+        f"{render_style_card(classify(user_affect_text or last_user_text))}"
+        f"{render_overlay_block()}"
         f"{memory_section}"
     )
 
@@ -361,6 +384,10 @@ def _execute_function_call(name: str, arguments_json: str) -> tuple[str, bool]:
         "list_memory",
     ):
         return execute_memory_tool(name, args), False
+    if name == "memory_crud":
+        return execute_memory_crud(args), False
+    if name in ("rewrite_self", "reset_self"):
+        return execute_self_tool(name, args), False
     return f"Неизвестная функция: {name}", False
 
 
@@ -514,10 +541,13 @@ def _post_responses(
     request_input: list[dict[str, object]],
     *,
     last_user_text: str = "",
+    user_affect_text: str = "",
 ) -> tuple[dict[str, object] | None, str, bool]:
     body: dict[str, object] = {
         "model": _model(),
-        "instructions": _build_instructions(last_user_text),
+        "instructions": _build_instructions(
+            last_user_text, user_affect_text=user_affect_text
+        ),
         "input": request_input,
         "stream": True,
         "tool_choice": "auto",
@@ -574,7 +604,7 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
     prompt = payload.strip()
     if not prompt:
         return CommandExecutionResult(
-            reply="Не расслышала запрос, повтори.",
+            reply="Пусто. Повтори нормально.",
             await_followup=True,
         )
 
@@ -584,6 +614,8 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
 
     memory = get_memory_manager()
     memory.ensure_session()
+    affect = classify(prompt)
+    note_user_affect(affect)
 
     user_item, request_input = _build_request_input(prompt)
     turn_history_items: list[dict[str, object]] = []
@@ -592,7 +624,10 @@ def handle(payload: str, stream_callback: StreamCallback | None = None) -> Comma
     try:
         for _ in range(_MAX_TOOL_ROUNDS + 1):
             final_response, full_text, has_function_calls = _post_responses(
-                api_key, request_input, last_user_text=prompt
+                api_key,
+                request_input,
+                last_user_text=prompt,
+                user_affect_text=prompt,
             )
 
             if final_response and final_response.get("status") == "failed":
