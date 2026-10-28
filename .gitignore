@@ -1,8 +1,11 @@
 .env
 creds.txt
+deepseek-bridge/token
 **/.venv/
 **/__pycache__/
 *.pyc
 windows/models/
 windows/third_party/
 pi/data/
+.DS_Store
+.vscode

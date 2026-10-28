@@ -1,9 +1,10 @@
-# Home assistant (Pi + Windows)
+# Home assistant (Pi + Windows + Яндекс Станция)
 
-Два Python-сервиса:
+Три части. Клиент DeepSeek на Pi и прокси колонки — разные процессы: свой ключ, свой URL, своя модель.
 
-- `pi/` — Raspberry Pi: микрофон, колонки, wake-фразы и команды.
+- `pi/` — Raspberry Pi: микрофон, колонки, wake-фразы и команды. Ответ пишет DeepSeek Responses API.
 - `windows/` — Windows: распознавание Vosk и синтез Piper.
+- `deepseek-bridge/` — прокси на отдельной Яндекс Станции. Распознавание и озвучка остаются в Яндексе, текст ответа пишет DeepSeek. К Pi и к `windows/` не подключается.
 
 ## Windows
 
@@ -53,6 +54,8 @@ PYTHONPATH=. python -m jarvis_pi
 
 Wake-фразы по умолчанию: `компьютер`, `джарвис`, `прослушка` (`WAKE_WORDS` в `.env`).
 
+Ответ на команду пишет DeepSeek Responses API: ключ `DEEPSEEK_API_KEY`, модель `DEEPSEEK_MODEL` (по умолчанию `deepseek-flash`), адрес `DEEPSEEK_RESPONSES_URL` (по умолчанию `https://api.deepseek.com/responses`) в `pi/.env`. У прокси колонки другие настройки, см. ниже.
+
 Во время ответа TTS микрофон остаётся включённым (AEC по reference из колонки). Wake-фразу по-прежнему распознаёт Windows STT: она прерывает озвучку, играет `accept.wav` и открывает окно команды. На Pi отдельная модель Vosk не нужна. `AEC_BACKEND=off` отключает WebRTC AEC. Задержку эха задаёт `AEC_STREAM_DELAY_MS`.
 
 Свет и другие устройства Home Assistant — tools `get_home` и `control_home`. Адрес и долгоживущий токен: `HA_URL` и `HA_TOKEN` в `pi/.env`.
@@ -68,3 +71,50 @@ chmod +x install-service.sh set-usb-audio.sh
 ```
 
 Снять: `./install-service.sh --uninstall`
+
+## Яндекс Станция
+
+Отдельная Станция 1-го поколения: YNDX-0001, плата tulip-d1, Android 6.0.1, quasar 3.21, прошивка 2.369.5.46. Она в локальной сети, root и SSH уже есть. `reboot` и `poweroff` на этой модели не вызывать: такой сброс может повесить плату до выдёргивания из розетки.
+
+Исходник прокси: `deepseek-bridge/bridge.py` и `deepseek-bridge/start.sh`. На колонке каталог `/data/quasar/deepseek-bridge/`. Python из Entware: `/opt/bin/python3`. `start.sh` не поднимает второй процесс, если pid в `bridge.pid` жив. Лог — `bridge.log`. Сертификаты: `SSL_CERT_FILE=/opt/etc/ssl/certs/ca-certificates.crt`. Автозапуск дописан в `/data/quasar/alicebridge/freeze-start.sh`. Обновления прошивки по-прежнему замораживает `freeze-updatesd.sh`; не отключать его и не убирать его вызов.
+
+В `/system/vendor/quasar/quasar.cfg` у `aliced` стоят `uniProxyUrl=ws://127.0.0.1:8443/uni.ws` и пустой `uniProxyQuicUrl`. Копия конфига до правки: `/data/quasar/quasar.cfg.orig`. Отдельного URL генерации в `quasar.cfg` нет: распознавание и ответ идут одним WebSocket. Прокси слушает `127.0.0.1:8443` (`BRIDGE_LISTEN`, `BRIDGE_PORT`) и сам открывает `wss://uniproxy.alice.yandex.net/uni.ws`.
+
+Ключ лежит в `deepseek-bridge/token` (на колонке путь задаёт `DEEPSEEK_TOKEN_FILE`, по умолчанию `/data/quasar/deepseek-bridge/token`). Файл в `.gitignore`. Содержимое ключа никуда не копировать.
+
+Поведение — в `bridge.py`. Режим `BRIDGE_MODE` по умолчанию `hybrid`. Кадры protobuf с префиксом `AAPI`. У голосового запроса выставляется `WaitClientApproval`, чтобы Яндекс не отвечал сам, пока прокси не решит. Финальный `AsrResult` с пустым текстом или с подстрокой из `YANDEX_HINTS` (музыка, громкость, таймер, будильник, пауза, блютус и соседние формулировки вроде «поставь», «включи», «выключи») отпускается в Яндекс. Остальной текст отменяется: ответ пишет DeepSeek Chat Completions (`https://api.deepseek.com/chat/completions`, модель `deepseek-chat`, без tools), колонке возвращается `AliceResponse`, звук запрашивается у Яндекса через `TtsGenerate`. Значение `BRIDGE_MODE`, отличное от `hybrid`, пропускает кадры в Яндекс без DeepSeek. Это обход, пока прокси ещё стоит в `uniProxyUrl`, а не возврат штатного конфига.
+
+Проверка без сети и без ключа (ожидается строка `selftest ok`):
+
+```bash
+python3 deepseek-bridge/bridge.py selftest
+```
+
+### Откат на штатный uniproxy
+
+Если прокси ломает голос, вернуть конфиг из копии и остановить процесс прокси. `reboot` и `poweroff` не использовать. `freeze-updatesd.sh` не отключать.
+
+1. Остановить только процесс прокси. Pid — в `/data/quasar/deepseek-bridge/bridge.pid`.
+2. Вернуть `/system/vendor/quasar/quasar.cfg` из `/data/quasar/quasar.cfg.orig`. Штатных значений `uniProxyUrl` и `uniProxyQuicUrl` в репозитории нет, они только в этой копии.
+3. Убрать из `/data/quasar/alicebridge/freeze-start.sh` только дописанный запуск `deepseek-bridge`. Вызов `freeze-updatesd.sh` оставить.
+4. Команды, которой `aliced` перечитывает `quasar.cfg`, в репозитории нет. Не заменять её на `reboot` или `poweroff`.
+
+Пока `uniProxyUrl` смотрит на `127.0.0.1:8443`, остановленный прокси оставляет колонку без голоса.
+
+## Проверки
+
+После правки Python на Pi, из каталога `pi`:
+
+```bash
+cd pi
+PYTHONPATH=. python -m pytest
+```
+
+На Windows тесты на `unittest`, из каталога `windows`:
+
+```bash
+cd windows
+python -m unittest discover -s tests
+```
+
+После правки прокси — `python3 deepseek-bridge/bridge.py selftest`.
