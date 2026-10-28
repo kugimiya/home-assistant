@@ -1,6 +1,7 @@
 .env
 creds.txt
 deepseek-bridge/token
+deepseek-bridge/bridge.env
 **/.venv/
 **/__pycache__/
 *.pyc

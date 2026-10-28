@@ -116,6 +116,10 @@ def build_instructions(last_user_text: str = "") -> str:
     lines.append(render_style_card(classify(last_user_text)))
     lines.append(render_overlay_block())
     lines.append(memory_section)
+    lines.append(
+        "Имя в озвучке только латиницей: Alice. "
+        "По-русски «Алиса» не пиши и не говори: колонка произнесёт wake-фразу и ответ сломается. "
+    )
     return "".join(lines)
 
 

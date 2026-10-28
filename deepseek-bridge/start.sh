@@ -14,6 +14,11 @@ export SSL_CERT_FILE=/opt/etc/ssl/certs/ca-certificates.crt
 export LD_LIBRARY_PATH=/opt/lib
 export PYTHONUNBUFFERED=1
 export BRIDGE_MODE="${BRIDGE_MODE:-hybrid}"
+if [ -f "$DIR/bridge.env" ]; then
+  set -a
+  . "$DIR/bridge.env"
+  set +a
+fi
 cd "$DIR" || exit 1
 "$BB" setsid /opt/bin/python3 "$DIR/bridge.py" >>"$DIR/bridge.log" 2>&1 &
 echo $! > "$DIR/bridge.pid"

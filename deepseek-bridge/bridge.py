@@ -880,7 +880,9 @@ def _assert_agent_tools():
             assert "rewrite_self" in instructions
             assert "самопальной" in instructions
             assert "Яндекс Станции" in instructions
-            assert "Алиса" in instructions
+            assert "Alice" in instructions
+            assert "«Алиса» не пиши" in instructions
+            assert "wake-фразу" in instructions
             assert "800 токенов" in instructions
             assert "45 секунд" in instructions
             assert "500 символов" in instructions
