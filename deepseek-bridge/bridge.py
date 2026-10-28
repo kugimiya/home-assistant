@@ -1,14 +1,11 @@
 #!/opt/bin/python3
-"""Local uniproxy bridge: Yandex ASR/TTS, DeepSeek for the reply."""
+"""Local uniproxy bridge: Yandex ASR/TTS, DeepSeek tools for the reply."""
 
 import asyncio
-import json
 import os
 import ssl
 import sys
 import traceback
-import urllib.error
-import urllib.request
 
 LISTEN = os.environ.get("BRIDGE_LISTEN", "127.0.0.1")
 PORT = int(os.environ.get("BRIDGE_PORT", "8443"))
@@ -42,17 +39,9 @@ YANDEX_HINTS = (
     "блютус",
     "bluetooth",
     "поставь",
-    "включи",
-    "выключи",
     "стоп",
     "дальше",
     "назад",
-)
-
-SYSTEM_PROMPT = (
-    "Ты голосовой ассистент колонки. Отвечай по-русски, коротко, "
-    "разговорным языком, как в устной речи. Без markdown, списков, "
-    "заголовков и скобок. Обычно одно-три предложения."
 )
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -364,49 +353,11 @@ def route_for(text):
 
 
 def speakable(text):
+    from agent.config import SPOKEN_CHAR_LIMIT
+
     cleaned = text.replace("**", "").replace("`", "").replace("#", "")
     cleaned = cleaned.replace("*", "")
-    return " ".join(cleaned.split())[:500]
-
-
-def load_token():
-    with open(TOKEN_FILE, "r", encoding="utf-8") as handle:
-        token = handle.read().strip()
-    if not token:
-        raise RuntimeError("empty token file")
-    return token
-
-
-def call_deepseek(messages):
-    token = load_token()
-    body = json.dumps(
-        {
-            "model": "deepseek-chat",
-            "messages": messages,
-            "temperature": 0.6,
-            "max_tokens": 400,
-            "stream": False,
-        }
-    ).encode()
-    req = urllib.request.Request(
-        "https://api.deepseek.com/chat/completions",
-        data=body,
-        headers={
-            "Authorization": "Bearer " + token,
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    context = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE"))
-    try:
-        with urllib.request.urlopen(req, timeout=20, context=context) as resp:
-            payload = json.loads(resp.read().decode())
-        content = payload["choices"][0]["message"].get("content") or ""
-        return speakable(content), None
-    except urllib.error.HTTPError as exc:
-        return None, exc.code
-    except Exception as exc:
-        return None, type(exc).__name__
+    return " ".join(cleaned.split())[:SPOKEN_CHAR_LIMIT]
 
 
 def failure_text(code):
@@ -651,13 +602,23 @@ class Session:
             answer, err = await asyncio.to_thread(self._ask, text)
             if req["canceled"]:
                 return
+            end_session = False
             if err is not None:
                 log(f"deepseek error {err}")
                 answer = failure_text(err)
+            elif getattr(answer, "end_session", False):
+                end_session = True
+                answer = ""
+            elif getattr(answer, "text", None) is not None:
+                answer = answer.text
+            answer = speakable(answer or "")
             req["local"] = True
+            await self.send_up(up, 2, build_cancel(req["id"], req["id"]))
+            if end_session or not answer:
+                log(f"llm silent req={req['id'][-4:]}")
+                return
             tts_id = new_id_like(req["id"])
             req["tts_id"] = tts_id
-            await self.send_up(up, 2, build_cancel(req["id"], req["id"]))
             await self.send_down(
                 down, 2, build_alice_response(req["meta"], req["id"], answer, req["id"])
             )
@@ -667,15 +628,24 @@ class Session:
             log("resolve failed " + traceback.format_exc().splitlines()[-1])
 
     def _ask(self, text):
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        messages.extend(self.history[-8:])
-        messages.append({"role": "user", "content": text})
-        answer, err = call_deepseek(messages)
-        if answer and err is None:
+        from agent.think import answer as agent_answer
+
+        try:
+            from agent.memory import get_memory_manager
+
+            get_memory_manager().set_clear_turns_callback(self.history.clear)
+        except Exception as exc:
+            log(f"memory hook failed {type(exc).__name__}")
+        result = agent_answer(text, self.history)
+        if result.error is None and result.text and not result.end_session:
             self.history.append({"role": "user", "content": text})
-            self.history.append({"role": "assistant", "content": answer})
+            self.history.append({"role": "assistant", "content": result.text})
             del self.history[:-8]
-        return answer, err
+        if result.end_session:
+            self.history.clear()
+        if result.error is not None:
+            return None, result.error
+        return result, None
 
     async def _release_yandex(self, req, up):
         req["cloud"] = True
@@ -860,7 +830,90 @@ def selftest():
     assert parse_server(answer)["kind"] == "alice"
     tts = build_tts(new_id_like(msg["id"]), "Сорок два.")
     assert parse_client(tts)["id"]
+    _assert_agent_tools()
     print("selftest ok")
+
+
+def _assert_agent_tools():
+    import tempfile
+    from pathlib import Path
+
+    from agent.catalog import enabled_tool_names, execute
+    from agent.config import STATION_TOOLS, TOKEN_FILE as agent_token
+    from agent.think import build_instructions
+
+    assert agent_token == TOKEN_FILE
+    saved = {}
+    for name in STATION_TOOLS:
+        key = "BRIDGE_TOOL_" + name.upper()
+        saved[key] = os.environ.pop(key, None)
+    try:
+        names = set(enabled_tool_names())
+        for required in (
+            "get_weather",
+            "web_search",
+            "run_python",
+            "decline",
+            "search_memory",
+            "rewrite_self",
+            "reset_self",
+            "get_home",
+            "control_home",
+        ):
+            assert required in names, required
+        for name in STATION_TOOLS:
+            assert name not in names, name
+        text, ended = execute("set_timer", '{"duration_seconds": 5}')
+        assert ended is False and "выключена" in text
+        assert route_for("поставь таймер на пять минут") == "yandex"
+        assert route_for("включи свет в зале") == "llm"
+        assert route_for("выключи лампу") == "llm"
+        assert route_for("включи музыку") == "yandex"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            os.environ["MEMORY_DB_PATH"] = str(root / "memory.db")
+            os.environ["PERSONALITY_PATH"] = str(root / "personality.json")
+            os.environ["PERSONALITY_OVERLAY_PATH"] = str(root / "overlay.json")
+            instructions = build_instructions("какая погода")
+            assert "get_weather" in instructions
+            assert "web_search" in instructions
+            assert "rewrite_self" in instructions
+            assert "самопальной" in instructions
+            assert "Яндекс Станции" in instructions
+            assert "Алиса" in instructions
+            assert "800 токенов" in instructions
+            assert "45 секунд" in instructions
+            assert "500 символов" in instructions
+            assert "set_timer" not in instructions
+            assert "control_home" in instructions
+            import agent.catalog as catalog
+
+            original = catalog.home_tool.get_home
+
+            def _boom(target: str = "") -> str:
+                raise RuntimeError("нет связи с Home Assistant")
+
+            catalog.home_tool.get_home = _boom
+            try:
+                crashed, decline = execute("get_home", "{}")
+            finally:
+                catalog.home_tool.get_home = original
+            assert decline is False
+            assert "нет связи с Home Assistant" in crashed
+            assert crashed.startswith("Ошибка инструмента get_home")
+            os.environ["BRIDGE_TOOL_SET_TIMER"] = "1"
+            assert "set_timer" in enabled_tool_names()
+            assert "set_timer" in build_instructions("поставь таймер")
+            assert route_for("поставь таймер на пять минут") == "yandex"
+    finally:
+        for key, value in saved.items():
+            if value is not None:
+                os.environ[key] = value
+            else:
+                os.environ.pop(key, None)
+        os.environ.pop("MEMORY_DB_PATH", None)
+        os.environ.pop("PERSONALITY_PATH", None)
+        os.environ.pop("PERSONALITY_OVERLAY_PATH", None)
 
 
 if __name__ == "__main__":

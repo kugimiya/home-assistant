@@ -7,5 +7,6 @@ deepseek-bridge/token
 windows/models/
 windows/third_party/
 pi/data/
+deepseek-bridge/data/
 .DS_Store
 .vscode
