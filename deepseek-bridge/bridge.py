@@ -640,6 +640,20 @@ class Session:
         if result.error is None and result.text and not result.end_session:
             self.history.append({"role": "user", "content": text})
             self.history.append({"role": "assistant", "content": result.text})
+            try:
+                from agent.pipeline.tools import consume_last_started_job
+
+                started = consume_last_started_job()
+                if started:
+                    job_id, title = started
+                    self.history.append(
+                        {
+                            "role": "assistant",
+                            "content": f"Запущена задача «{title}» ({job_id}).",
+                        }
+                    )
+            except Exception:
+                pass
             del self.history[:-8]
         if result.end_session:
             self.history.clear()
@@ -757,6 +771,14 @@ async def handle_client(reader, writer):
         await writer.drain()
         log("upstream open")
         session = Session()
+        try:
+            from agent.pipeline.config import pipeline_enabled
+            from agent.pipeline.service import get_job_service
+
+            if pipeline_enabled():
+                get_job_service().ensure_started()
+        except Exception as exc:
+            log(f"pipeline start failed {type(exc).__name__}")
         client_frames = FrameReader(reader)
         server_frames = FrameReader(up_reader)
 
@@ -891,6 +913,18 @@ def _assert_agent_tools():
             assert "control_home" in instructions
             assert "describe_runtime" in instructions
             assert "run_python" in instructions
+            pipe_saved = os.environ.pop("BRIDGE_PIPELINE", None)
+            assert "start_background_job" not in enabled_tool_names()
+            assert "start_background_job" not in instructions
+            os.environ["BRIDGE_PIPELINE"] = "1"
+            os.environ["JOBS_DB_PATH"] = str(root / "jobs.db")
+            assert "start_background_job" in enabled_tool_names()
+            assert "start_background_job" in build_instructions("как агент изучи")
+            if pipe_saved is not None:
+                os.environ["BRIDGE_PIPELINE"] = pipe_saved
+            else:
+                os.environ.pop("BRIDGE_PIPELINE", None)
+            os.environ.pop("JOBS_DB_PATH", None)
             ran, ran_end = execute("run_python", '{"code": "print(6 * 7)"}')
             assert ran_end is False and ran.strip() == "42", ran
             os.environ["HA_TOKEN"] = "secret-marker"

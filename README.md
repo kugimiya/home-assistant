@@ -86,7 +86,9 @@ chmod +x install-service.sh set-usb-audio.sh
 
 Агент ходит в Chat Completions (`https://api.deepseek.com/chat/completions`, модель `BRIDGE_MODEL`, по умолчанию `deepseek-chat`) со своими tools. Включены погода, поиск, выполнение Python `run_python`, описание устройства `describe_runtime`, память, характер (`rewrite_self`, `reset_self`), `decline`, а также умный дом `get_home` и `control_home` (`HA_URL`, `HA_TOKEN` в окружении прокси). Если tool падает, текст ошибки уходит обратно в модель, и колонка озвучивает её пересказ. Таймер и громкость скопированы, но в конфиге выключены (`BRIDGE_TOOL_SET_TIMER`, `BRIDGE_TOOL_SET_SPEAKER_VOLUME`, `BRIDGE_TOOL_SET_MIC_VOLUME`), чтобы не перехватывать то, что колонка уже умеет. Пока флаг выключен, модель эти tools не видит. Даже если флаг включить, фразы из `YANDEX_HINTS` по-прежнему уходят в Яндекс. Значение `BRIDGE_MODE`, отличное от `hybrid`, пропускает кадры в Яндекс без DeepSeek. Это обход, пока прокси ещё стоит в `uniProxyUrl`, а не возврат штатного конфига.
 
-Память и самоправки характера пишутся в `deepseek-bridge/data/` (на колонке это `/data/quasar/deepseek-bridge/data/`). Каталог в `.gitignore`.
+Память и самоправки характера пишутся в `deepseek-bridge/data/` (на колонке это `/data/quasar/deepseek-bridge/data/`). Каталог в `.gitignore`. Опциональный фоновый agent pipeline (долгие задачи, Responses API в worker) включается `BRIDGE_PIPELINE=1`; см. `deepseek-bridge/agent-pipeline.md` и `bridge.env.example`.
+
+Тесты bridge: `python3 deepseek-bridge/bridge.py selftest` и `cd deepseek-bridge && python3 -m unittest discover -s tests -v`.
 
 ### AirPlay (приёмник на колонке)
 

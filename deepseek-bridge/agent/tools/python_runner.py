@@ -21,10 +21,12 @@ def _child_env() -> dict[str, str]:
     return env
 
 
-def run_python(code: str) -> str:
+def run_python(code: str, *, timeout_sec: int | None = None) -> str:
     code = code.strip()
     if not code:
         return "Ошибка: пустой код."
+
+    timeout = TIMEOUT_SEC if timeout_sec is None else max(1, int(timeout_sec))
 
     try:
         with tempfile.TemporaryDirectory(prefix="bridge-py-") as work:
@@ -32,13 +34,13 @@ def run_python(code: str) -> str:
                 [sys.executable, "-I", "-c", code],
                 capture_output=True,
                 text=True,
-                timeout=TIMEOUT_SEC,
+                timeout=timeout,
                 check=False,
                 cwd=work,
                 env=_child_env(),
             )
     except subprocess.TimeoutExpired:
-        return f"Ошибка: выполнение дольше {TIMEOUT_SEC} секунд."
+        return f"Ошибка: выполнение дольше {timeout} секунд."
     except OSError as exc:
         return f"Ошибка запуска Python: {exc}"
 

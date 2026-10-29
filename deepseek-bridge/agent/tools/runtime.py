@@ -66,4 +66,19 @@ def describe_runtime() -> str:
             "Даже если их включить, фразы про музыку, таймер и громкость "
             "всё равно уходят в Яндекс раньше, чем их увидит модель. "
         )
+    try:
+        from agent.pipeline.config import max_concurrent_jobs, pipeline_enabled
+        from agent.responses_llm import job_model_name, responses_url
+
+        if pipeline_enabled():
+            parts.append(
+                "Фоновый agent pipeline включён (BRIDGE_PIPELINE=1). "
+                "Долгие задачи идут в jobs.db, worker ходит в Responses API "
+                f"{responses_url()}, модель {job_model_name()}. "
+                f"Одновременно не больше {max_concurrent_jobs()} job. "
+                "Голосовой ответ по-прежнему через Chat Completions и короткие лимиты. "
+                "Есть лимит API-вызовов на job и introspection при отсечке. "
+            )
+    except Exception:
+        pass
     return "".join(parts)

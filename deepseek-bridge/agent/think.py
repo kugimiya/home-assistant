@@ -16,6 +16,7 @@ from agent.config import (
     location_tz,
     tool_enabled,
 )
+from agent.pipeline.config import pipeline_enabled
 from agent.llm import assistant_message, post_chat
 from agent.personality.affect import classify
 from agent.personality.overlay import render_overlay_block
@@ -113,6 +114,15 @@ def build_instructions(last_user_text: str = "") -> str:
             "Для умного дома вызывай get_home, чтобы узнать состояние, и control_home, "
             "чтобы включить, выключить или переключить свет и другие устройства. "
             "В target передавай слова пользователя («зал 2», «свет в зале»), не выдумывай entity_id. "
+        )
+    if pipeline_enabled():
+        lines.append(
+            "Для долгого исследования («как агент», «изучи рынок», несколько поисков и расчётов) "
+            "вызывай start_background_job: озвучь название задачи и что статус и результат — "
+            "через get_background_job_status и get_background_job_result. "
+            "Не делай больше одного web_search подряд для такого запроса без фоновой задачи. "
+            "Статус и результат не выдумывай — только из pipeline tools. "
+            "Полный отчёт вслух не читай целиком. "
         )
     lines.append(IDENTITY_INSTRUCTIONS + " ")
     lines.append(render_style_card(classify(last_user_text)))

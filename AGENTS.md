@@ -122,6 +122,8 @@ Wake-фразы, STT и TTS в прокси нет: речь и озвучка �
 
 Это не клиент Pi. На Pi — Responses API, модель `deepseek-flash`, ключ `DEEPSEEK_API_KEY`, свой стрим в Piper. Общий `.env` у них нет. Модель прокси — `BRIDGE_MODEL`, не `DEEPSEEK_MODEL`.
 
+Фоновый **agent pipeline** (долгие исследования) выключен по умолчанию: `BRIDGE_PIPELINE=0`. При `BRIDGE_PIPELINE=1` голосовой агент по-прежнему Chat Completions с короткими лимитами; tools `start_background_job`, `list_background_jobs`, `get_background_job_status`, `get_background_job_result`, `cancel_background_job` ставят задачу в очередь. Worker в том же процессе `bridge.py` ходит в Responses API (`BRIDGE_RESPONSES_URL`, модель `BRIDGE_JOB_MODEL`), пишет шаги и результат в `JOBS_DB_PATH` (по умолчанию рядом с `memory.db`). На job действуют лимиты API-вызовов и introspection-checkpoint (complete / stuck / continue). Пример env — `deepseek-bridge/bridge.env.example`, архитектура — `deepseek-bridge/agent-pipeline.md`. Для отладки без API: `BRIDGE_PIPELINE_STUB_WORKER=1`.
+
 ### AirPlay на колонке (не в репозитории)
 
 На устройстве установлен приёмник AirPlay 2 через Entware (`/opt/bin/opkg`): **shairport-sync-openssl**, **nqptp**, **avahi-dbus-daemon**, **alsa-utils**. К прокси и к `deepseek-bridge/agent/` не подключается.
@@ -165,6 +167,7 @@ python -m unittest discover -s tests
 
 ```bash
 python3 deepseek-bridge/bridge.py selftest
+cd deepseek-bridge && python3 -m unittest discover -s tests -v
 ```
 
-Ожидаемая строка: `selftest ok`. На колонке тот же файл запускает `/opt/bin/python3`.
+Ожидаемая строка selftest: `selftest ok`. На колонке тот же файл запускает `/opt/bin/python3`.

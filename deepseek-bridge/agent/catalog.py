@@ -5,6 +5,11 @@ from __future__ import annotations
 import json
 
 from agent.config import tool_enabled
+from agent.pipeline.tools import (
+    execute_pipeline_tool,
+    foreground_specs,
+    is_pipeline_tool,
+)
 from agent.memory.tools import (
     MEMORY_CRUD_TOOL,
     MEMORY_RESPONSES_TOOLS,
@@ -217,6 +222,7 @@ def _all_specs() -> list[dict[str, object]]:
     specs.append(MEMORY_CRUD_TOOL)
     specs.extend(SELF_RESPONSES_TOOLS)
     specs.extend(_STATION)
+    specs.extend(foreground_specs())
     return specs
 
 
@@ -254,6 +260,14 @@ def execute(name: str, arguments_json: str) -> tuple[str, bool]:
 
 
 def _execute(name: str, arguments_json: str) -> tuple[str, bool]:
+    if is_pipeline_tool(name):
+        try:
+            args = json.loads(arguments_json or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        if not isinstance(args, dict):
+            args = {}
+        return execute_pipeline_tool(name, args), False
     if not tool_enabled(name):
         return _OFF, False
     try:
