@@ -13,7 +13,7 @@ from agent.memory.tools import (
 )
 from agent.personality.tools import SELF_RESPONSES_TOOLS, execute_self_tool
 from agent.tools import home as home_tool
-from agent.tools import python_runner, timer, volume, weather, web_search
+from agent.tools import python_runner, runtime, timer, volume, weather, web_search
 
 _OFF = "Эта функция выключена: её выполняет сама колонка."
 
@@ -51,8 +51,9 @@ _CORE: list[dict[str, object]] = [
         "type": "function",
         "name": "run_python",
         "description": (
-            "Выполнить короткий Python для точных вычислений: проценты, деление, "
-            "сколько времени до указанного часа. Код должен print() результат."
+            "Выполнить на колонке Python-код, который написала модель: "
+            "расчёты, даты, разбор текста и другие проверки. "
+            "Результат только через print()."
         ),
         "parameters": {
             "type": "object",
@@ -72,6 +73,20 @@ _CORE: list[dict[str, object]] = [
         "description": (
             "Завершить диалог и уйти в режим ожидания, когда пользователь прощается "
             "или просит замолчать: спи, выключись, всё, хватит, отбой."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "describe_runtime",
+        "description": (
+            "Как сейчас устроен bridge: что выполняется на серверах Яндекса, "
+            "что на сервере DeepSeek и что работает локально на колонке. "
+            "Вызывай, когда нужно объяснить устройство или не выдумывать, где считается ответ."
         ),
         "parameters": {
             "type": "object",
@@ -259,6 +274,8 @@ def _execute(name: str, arguments_json: str) -> tuple[str, bool]:
         return web_search.search(query), False
     if name == "run_python":
         return python_runner.run_python(str(args.get("code", ""))), False
+    if name == "describe_runtime":
+        return runtime.describe_runtime(), False
     if name == "set_timer":
         return timer.schedule_timer(args.get("duration_seconds", 0), label=str(args.get("label", ""))), False
     if name == "set_speaker_volume":

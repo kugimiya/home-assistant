@@ -84,9 +84,19 @@ chmod +x install-service.sh set-usb-audio.sh
 
 Поведение — в `bridge.py` и `deepseek-bridge/agent/`. Режим `BRIDGE_MODE` по умолчанию `hybrid`. Кадры protobuf с префиксом `AAPI`. У голосового запроса выставляется `WaitClientApproval`, чтобы Яндекс не отвечал сам, пока прокси не решит. Финальный `AsrResult` с пустым текстом или с подстрокой из `YANDEX_HINTS` (музыка, громкость, таймер, будильник, пауза, блютус и соседние формулировки вроде «поставь», «стоп») отпускается в Яндекс. «Включи» и «выключи» перехватывает прокси. Остальной текст отменяется: ответ пишет агент в `deepseek-bridge/agent/`, колонке возвращается `AliceResponse`, звук запрашивается у Яндекса через `TtsGenerate`. Wake-фразы, распознавание и синтез прокси не делает.
 
-Агент ходит в Chat Completions (`https://api.deepseek.com/chat/completions`, модель `BRIDGE_MODEL`, по умолчанию `deepseek-chat`) со своими tools. Включены погода, поиск, расчёт `run_python`, память, характер (`rewrite_self`, `reset_self`), `decline`, а также умный дом `get_home` и `control_home` (`HA_URL`, `HA_TOKEN` в окружении прокси). Если tool падает, текст ошибки уходит обратно в модель, и колонка озвучивает её пересказ. Таймер и громкость скопированы, но в конфиге выключены (`BRIDGE_TOOL_SET_TIMER`, `BRIDGE_TOOL_SET_SPEAKER_VOLUME`, `BRIDGE_TOOL_SET_MIC_VOLUME`), чтобы не перехватывать то, что колонка уже умеет. Пока флаг выключен, модель эти tools не видит. Даже если флаг включить, фразы из `YANDEX_HINTS` по-прежнему уходят в Яндекс. Значение `BRIDGE_MODE`, отличное от `hybrid`, пропускает кадры в Яндекс без DeepSeek. Это обход, пока прокси ещё стоит в `uniProxyUrl`, а не возврат штатного конфига.
+Агент ходит в Chat Completions (`https://api.deepseek.com/chat/completions`, модель `BRIDGE_MODEL`, по умолчанию `deepseek-chat`) со своими tools. Включены погода, поиск, выполнение Python `run_python`, описание устройства `describe_runtime`, память, характер (`rewrite_self`, `reset_self`), `decline`, а также умный дом `get_home` и `control_home` (`HA_URL`, `HA_TOKEN` в окружении прокси). Если tool падает, текст ошибки уходит обратно в модель, и колонка озвучивает её пересказ. Таймер и громкость скопированы, но в конфиге выключены (`BRIDGE_TOOL_SET_TIMER`, `BRIDGE_TOOL_SET_SPEAKER_VOLUME`, `BRIDGE_TOOL_SET_MIC_VOLUME`), чтобы не перехватывать то, что колонка уже умеет. Пока флаг выключен, модель эти tools не видит. Даже если флаг включить, фразы из `YANDEX_HINTS` по-прежнему уходят в Яндекс. Значение `BRIDGE_MODE`, отличное от `hybrid`, пропускает кадры в Яндекс без DeepSeek. Это обход, пока прокси ещё стоит в `uniProxyUrl`, а не возврат штатного конфига.
 
 Память и самоправки характера пишутся в `deepseek-bridge/data/` (на колонке это `/data/quasar/deepseek-bridge/data/`). Каталог в `.gitignore`.
+
+### AirPlay (приёмник на колонке)
+
+Отдельно от `deepseek-bridge`, только на устройстве. В git не входит. Приёмник — **Shairport Sync** (AirPlay 2) из Entware: пакеты `shairport-sync-openssl`, `nqptp`, `avahi-dbus-daemon`, `alsa-utils` и зависимости (`dbus`, `libavahi-*`). Ставятся через `/opt/bin/opkg` в `/opt` (симлинк `/opt` → `/data/opt/entware`).
+
+Каталог на колонке: `/data/quasar/airplay/`. Конфиг — `shairport-sync.conf` (имя в сети **Yandex Station**, ALSA `plughw:1,0`, `output_rate = 44100` — ресемплинг под DAC колонки). Запуск — `start.sh`: поднимает D-Bus (`/opt/share/dbus-1/system.conf`), **avahi-daemon** с `--no-drop-root --no-rlimits` (на Android иначе не стартует), **nqptp**, **shairport-sync**. В окружение процессов нужен `DBUS_SYSTEM_BUS_ADDRESS=unix:path=/opt/var/run/dbus/system_bus_socket`. Для avahi bind-mount `/etc/passwd` и `/etc/group` с `/data/quasar/etc/` (записи `nobody`, `nogroup`, `messagebus`, `avahi` — штатный `/etc` на колонке их не содержит).
+
+Автозапуск — строка в `/data/quasar/alicebridge/freeze-start.sh` (рядом с `deepseek-bridge/start.sh`). Логи: `shairport.log`, `avahi.log`, `boot.log`. RTSP слушает **7000**. В mDNS — `_airplay._tcp` и `_raop._tcp`. Ручной перезапуск: `sh /data/quasar/airplay/start.sh`. Остановка: `killall shairport-sync avahi-daemon nqptp` (D-Bus можно оставить).
+
+AirPlay не связан с Алисой и прокси: звук идёт в ALSA минуя `bridge.py`. Одновременно с озвучкой Яндекса возможен конфликт за выход. `reboot` / `poweroff` по-прежнему не использовать.
 
 Проверка без сети и без ключа (ожидается строка `selftest ok`):
 
@@ -100,7 +110,7 @@ python3 deepseek-bridge/bridge.py selftest
 
 1. Остановить только процесс прокси. Pid — в `/data/quasar/deepseek-bridge/bridge.pid`.
 2. Вернуть `/system/vendor/quasar/quasar.cfg` из `/data/quasar/quasar.cfg.orig`. Штатных значений `uniProxyUrl` и `uniProxyQuicUrl` в репозитории нет, они только в этой копии.
-3. Убрать из `/data/quasar/alicebridge/freeze-start.sh` только дописанный запуск `deepseek-bridge`. Вызов `freeze-updatesd.sh` оставить.
+3. Убрать из `/data/quasar/alicebridge/freeze-start.sh` дописанные запуски `deepseek-bridge` и при необходимости `airplay/start.sh`. Вызов `freeze-updatesd.sh` оставить.
 4. Команды, которой `aliced` перечитывает `quasar.cfg`, в репозитории нет. Не заменять её на `reboot` или `poweroff`.
 
 Пока `uniProxyUrl` смотрит на `127.0.0.1:8443`, остановленный прокси оставляет колонку без голоса.

@@ -10,6 +10,15 @@ if [ -f "$DIR/bridge.pid" ]; then
         fi ;;
     esac
 fi
+i=0
+while [ ! -x /opt/bin/python3 ] || [ ! -x /opt/lib/ld-linux-aarch64.so.1 ]; do
+  i=$((i + 1))
+  if [ "$i" -gt 30 ]; then
+    echo "python is not ready" >>"$DIR/bridge.log"
+    exit 1
+  fi
+  "$BB" sleep 1
+done
 export SSL_CERT_FILE=/opt/etc/ssl/certs/ca-certificates.crt
 export LD_LIBRARY_PATH=/opt/lib
 export PYTHONUNBUFFERED=1

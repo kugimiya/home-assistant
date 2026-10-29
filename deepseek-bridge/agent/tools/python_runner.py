@@ -1,12 +1,24 @@
-"""Execute short Python snippets for calculations (tool output for the model)."""
+"""Run Python written by the model. The result goes back to the model, not to speech."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import tempfile
 
 _MAX_OUTPUT_CHARS = 4096
-_TIMEOUT_SEC = 5
+TIMEOUT_SEC = 15
+_SECRET_PARTS = ("TOKEN", "SECRET", "PASSWORD", "API_KEY")
+
+
+def _child_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in list(env):
+        upper = key.upper()
+        if any(part in upper for part in _SECRET_PARTS):
+            env.pop(key, None)
+    return env
 
 
 def run_python(code: str) -> str:
@@ -15,15 +27,18 @@ def run_python(code: str) -> str:
         return "Ошибка: пустой код."
 
     try:
-        completed = subprocess.run(
-            [sys.executable, "-I", "-c", code],
-            capture_output=True,
-            text=True,
-            timeout=_TIMEOUT_SEC,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="bridge-py-") as work:
+            completed = subprocess.run(
+                [sys.executable, "-I", "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SEC,
+                check=False,
+                cwd=work,
+                env=_child_env(),
+            )
     except subprocess.TimeoutExpired:
-        return f"Ошибка: выполнение дольше {_TIMEOUT_SEC} секунд."
+        return f"Ошибка: выполнение дольше {TIMEOUT_SEC} секунд."
     except OSError as exc:
         return f"Ошибка запуска Python: {exc}"
 

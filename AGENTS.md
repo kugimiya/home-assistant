@@ -112,7 +112,7 @@ chmod +x install-service.sh set-usb-audio.sh
 
 Wake-фразы, STT и TTS в прокси нет: речь и озвучка остаются у Яндекса. Агент — Chat Completions, `https://api.deepseek.com/chat/completions`, модель `BRIDGE_MODEL` (по умолчанию `deepseek-chat`), tools, без стрима. Ключ читается из файла `DEEPSEEK_TOKEN_FILE` (на колонке `/data/quasar/deepseek-bridge/token`; в репозитории тот же относительный путь в `.gitignore`). В запросе `temperature` 0.6, `max_tokens` 800, таймаут 45 с на один ход. В историю реплик попадают последние 8 сообщений. Озвучиваемый текст обрезается до 500 символов. Ошибки 401/403, 429 и прочие превращаются в короткие фразы и тоже озвучиваются через тот же путь.
 
-Включённые tools: `get_weather`, `web_search`, `run_python`, `decline`, память (`search_memory`, `add_memory`, `get_profile`, `get_recent_episodes`, `list_memory`, `memory_crud`), характер (`rewrite_self`, `reset_self`). Характер тот же по сухости и женскому роду, что на Pi. В тексте для колонки: раньше жила в самопальной колонке, сейчас в Яндекс Станции, озвучивает Яндекс, отзывается на Alice. В озвучке имя только латиницей Alice: кириллическое «Алиса» — wake-фраза, из-за неё ответ обрывается. Туда же зашиты пределы из `agent/config.py`: 800 токенов и 45 секунд на ход, 6 раундов tools, вслух не больше 500 символов. Инструкции собирает `agent/think.py` и не упоминает выключенные tools.
+Включённые tools: `get_weather`, `web_search`, `run_python`, `describe_runtime`, `decline`, память (`search_memory`, `add_memory`, `get_profile`, `get_recent_episodes`, `list_memory`, `memory_crud`), характер (`rewrite_self`, `reset_self`). `run_python` запускает на колонке Python, который написала модель: отдельный процесс, результат через `print()`, в окружение процесса не попадают переменные с токеном, секретом или паролем. `describe_runtime` по запросу модели отдаёт текущее устройство: Яндекс (распознавание, озвучка, музыка и плеер), DeepSeek (текст ответа и выбор tool, без аудио и без исполнения tools), колонка (прокси, память, характер и сами tools). Список включённых tools в этом ответе берётся из каталога. Характер тот же по сухости и женскому роду, что на Pi. В тексте для колонки: раньше жила в самопальной колонке, сейчас в Яндекс Станции, озвучивает Яндекс, отзывается на Alice. В озвучке имя только латиницей Alice: кириллическое «Алиса» — wake-фраза, из-за неё ответ обрывается. Туда же зашиты пределы из `agent/config.py`: 800 токенов и 45 секунд на ход, 6 раундов tools, вслух не больше 500 символов. Инструкции собирает `agent/think.py` и не упоминает выключенные tools.
 
 `get_home` и `control_home` включены. Адрес и токен Home Assistant на колонке: `HA_URL` и `HA_TOKEN` в окружении процесса прокси. Если tool бросает исключение, в следующий ход модели уходит текст `Ошибка инструмента …`, и озвучивается уже её пересказ, не сырой traceback.
 
@@ -122,13 +122,23 @@ Wake-фразы, STT и TTS в прокси нет: речь и озвучка �
 
 Это не клиент Pi. На Pi — Responses API, модель `deepseek-flash`, ключ `DEEPSEEK_API_KEY`, свой стрим в Piper. Общий `.env` у них нет. Модель прокси — `BRIDGE_MODEL`, не `DEEPSEEK_MODEL`.
 
+### AirPlay на колонке (не в репозитории)
+
+На устройстве установлен приёмник AirPlay 2 через Entware (`/opt/bin/opkg`): **shairport-sync-openssl**, **nqptp**, **avahi-dbus-daemon**, **alsa-utils**. К прокси и к `deepseek-bridge/agent/` не подключается.
+
+Пути только на колонке: `/data/quasar/airplay/` — `shairport-sync.conf`, `start.sh`, `airplay.pid`, логи. `start.sh` перед avahi делает bind-mount `/data/quasar/etc/passwd` и `group` на `/etc/passwd` и `/etc/group`; поднимает D-Bus, avahi с `--no-drop-root --no-rlimits`, nqptp, shairport-sync; задаёт `DBUS_SYSTEM_BUS_ADDRESS=unix:path=/opt/var/run/dbus/system_bus_socket`. В конфиге Shairport: имя **Yandex Station**, ALSA **`plughw:1,0`**, **`output_rate = 44100`** (без кавычек; `hw:1,0` и аппаратный микшер Subwoofer ломали старт — 48000 Hz у DAC, Shairport ждёт 44100). RTSP — порт **7000**.
+
+Автозапуск дописан в `/data/quasar/alicebridge/freeze-start.sh` отдельной строкой после `deepseek-bridge/start.sh`. При правке `freeze-start.sh` не удалять вызов `freeze-updatesd.sh` и не сливать с bridge в один скрипт без необходимости. Откат AirPlay: убрать строку с `airplay/start.sh`, `killall shairport-sync avahi-daemon nqptp`. Пакеты Entware с диска не трогать, если пользователь не просит.
+
+Звук AirPlay и озвучка Алисы делят ALSA; правки bridge не должны ломать `/data/quasar/airplay/`.
+
 ## Откат колонки на штатный uniproxy
 
 Если прокси ломает голос, конфиг колонки вернуть из копии, процесс прокси остановить. `reboot` и `poweroff` не использовать. `freeze-updatesd.sh` не отключать.
 
 1. Остановить только процесс прокси. Pid — в `/data/quasar/deepseek-bridge/bridge.pid`. `start.sh` считает процесс живым, если `kill -0` по этому pid успешен; для остановки завершить этот pid. Второй экземпляр `start.sh` сам не поднимется, пока pid жив.
 2. Вернуть `/system/vendor/quasar/quasar.cfg` из `/data/quasar/quasar.cfg.orig`. Штатных значений `uniProxyUrl` и `uniProxyQuicUrl` в репозитории нет, они только в этой копии.
-3. Убрать из `/data/quasar/alicebridge/freeze-start.sh` только дописанный запуск `deepseek-bridge`. Вызов `freeze-updatesd.sh` оставить.
+3. Убрать из `/data/quasar/alicebridge/freeze-start.sh` дописанные запуски `deepseek-bridge` и при необходимости `airplay/start.sh`. Вызов `freeze-updatesd.sh` оставить.
 4. Команды, которой `aliced` перечитывает `quasar.cfg`, в репозитории нет. Не заменять её на `reboot` или `poweroff`.
 
 Пока `uniProxyUrl` смотрит на `127.0.0.1:8443`, мёртвый прокси оставляет колонку без голоса. Временный обход, не откат конфига: `BRIDGE_MODE` со значением, отличным от `hybrid`, пропускает кадры в `uniproxy.alice.yandex.net` без DeepSeek. После настоящего отката этот обход не нужен.

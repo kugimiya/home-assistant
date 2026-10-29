@@ -853,6 +853,7 @@ def _assert_agent_tools():
             "get_weather",
             "web_search",
             "run_python",
+            "describe_runtime",
             "decline",
             "search_memory",
             "rewrite_self",
@@ -888,6 +889,24 @@ def _assert_agent_tools():
             assert "500 символов" in instructions
             assert "set_timer" not in instructions
             assert "control_home" in instructions
+            assert "describe_runtime" in instructions
+            assert "run_python" in instructions
+            ran, ran_end = execute("run_python", '{"code": "print(6 * 7)"}')
+            assert ran_end is False and ran.strip() == "42", ran
+            os.environ["HA_TOKEN"] = "secret-marker"
+            leaked, _ = execute(
+                "run_python",
+                '{"code": "import os; print(os.environ.get(\'HA_TOKEN\', \'gone\'))"}',
+            )
+            assert "secret-marker" not in leaked and "gone" in leaked, leaked
+            os.environ.pop("HA_TOKEN", None)
+            layout, layout_end = execute("describe_runtime", "{}")
+            assert layout_end is False
+            assert "uniproxy.alice.yandex.net" in layout
+            assert "api.deepseek.com" in layout
+            assert "Локально на колонке" in layout
+            assert "run_python:" in layout
+            assert "set_timer" in layout
             import agent.catalog as catalog
 
             original = catalog.home_tool.get_home
